@@ -1,4 +1,4 @@
-# 新游戏引擎项目
+# EmberFrame Engine 项目计划
 
 这是后续新引擎源码的固定目录。项目采用“Vulkan Guide 渲染起点 + Piccolo 架构参考”；上游代码已经固定到独立基线分支，并完成 Windows Release 构建和启动验证。
 
@@ -14,7 +14,7 @@
 ## 演进后的目标结构
 
 ```text
-engine-project/
+Emberframe-Engine/
 ├─ engine/       # Runtime 与各引擎模块
 ├─ editor/       # 后续编辑器和工具
 ├─ samples/      # 可独立运行的功能样例

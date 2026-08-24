@@ -1,4 +1,4 @@
-# Vulkan Engine Lab
+# EmberFrame Engine
 
 一个面向游戏引擎实习的现代 C++ / Vulkan 学习型引擎项目。
 
