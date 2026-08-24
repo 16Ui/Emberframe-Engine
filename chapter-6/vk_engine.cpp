@@ -36,19 +36,22 @@ VulkanEngine& VulkanEngine::Get()
     return *loadedEngine;
 }
 
-void VulkanEngine::init()
+void VulkanEngine::init(SDL_Window* window)
 {
     // only one engine initialization is allowed with the application.
     assert(loadedEngine == nullptr);
     loadedEngine = this;
 
-    // We initialize SDL and create a window with it.
-    SDL_Init(SDL_INIT_VIDEO);
+    assert(window != nullptr);
+    _window = window;
 
-    SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-
-    _window = SDL_CreateWindow("Vulkan Engine", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, _windowExtent.width,
-        _windowExtent.height, window_flags);
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSize(_window, &width, &height);
+    _windowExtent = {
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+    };
 
     init_vulkan();
 
@@ -174,7 +177,9 @@ void VulkanEngine::cleanup()
         vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
         vkDestroyInstance(_instance, nullptr);
 
-        SDL_DestroyWindow(_window);
+        _window = nullptr;
+        _isInitialized = false;
+        loadedEngine = nullptr;
     }
 }
 
@@ -557,89 +562,70 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     drawCommands.TransparentSurfaces.clear();
 }
 
-void VulkanEngine::run()
+void VulkanEngine::process_event(SDL_Event& event)
 {
-    SDL_Event e;
-    bool bQuit = false;
-
-    // main loop
-    while (!bQuit) {
-        auto start = std::chrono::system_clock::now();
-
-        // Handle events on queue
-        while (SDL_PollEvent(&e) != 0) {
-            // close the window when user alt-f4s or clicks the X button
-            if (e.type == SDL_QUIT)
-                bQuit = true;
-
-            if (e.type == SDL_WINDOWEVENT) {
-
-				if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                    resize_requested = true;
-				}
-				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
-					freeze_rendering = true;
-				}
-				if (e.window.event == SDL_WINDOWEVENT_RESTORED) {
-					freeze_rendering = false;
-				}
-            }
-            
-            mainCamera.processSDLEvent(e);
-            ImGui_ImplSDL2_ProcessEvent(&e);
+    if (event.type == SDL_WINDOWEVENT) {
+        if (event.window.event == SDL_WINDOWEVENT_RESIZED) {
+            resize_requested = true;
         }
-
-        if (freeze_rendering) continue;
-
-		if (resize_requested) {
-			resize_swapchain();
-		}
-
-        // imgui new frame
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-
-        ImGui::NewFrame();
-
-        ImGui::Begin("Stats");
-
-		ImGui::Text("frametime %f ms", stats.frametime);
-		ImGui::Text("drawtime %f ms", stats.mesh_draw_time);
-		ImGui::Text("triangles %i", stats.triangle_count);
-		ImGui::Text("draws %i", stats.drawcall_count);
-        ImGui::End();
-
-		if (ImGui::Begin("background")) {
-
-			ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
-
-			ImGui::Text("Selected effect: ", selected.name);
-
-			ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, backgroundEffects.size() - 1);
-
-			ImGui::InputFloat4("data1", (float*)&selected.data.data1);
-			ImGui::InputFloat4("data2", (float*)&selected.data.data2);
-			ImGui::InputFloat4("data3", (float*)&selected.data.data3);
-			ImGui::InputFloat4("data4", (float*)&selected.data.data4);
-
-			ImGui::End();
-		}
-
-		ImGui::Render();
-
-        // imgui commands
-        // ImGui::ShowDemoWindow();
-
-        update_scene();
-
-
-        draw();
-
-        auto end = std::chrono::system_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-        stats.frametime = elapsed.count() / 1000.f;
+        if (event.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+            freeze_rendering = true;
+        }
+        if (event.window.event == SDL_WINDOWEVENT_RESTORED) {
+            freeze_rendering = false;
+        }
     }
+
+    mainCamera.processSDLEvent(event);
+    ImGui_ImplSDL2_ProcessEvent(&event);
+}
+
+void VulkanEngine::tick()
+{
+    const auto start = std::chrono::system_clock::now();
+
+    if (freeze_rendering) {
+        return;
+    }
+
+    if (resize_requested) {
+        resize_swapchain();
+    }
+
+    // imgui new frame
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+
+    ImGui::NewFrame();
+
+    ImGui::Begin("Stats");
+    ImGui::Text("frametime %f ms", stats.frametime);
+    ImGui::Text("drawtime %f ms", stats.mesh_draw_time);
+    ImGui::Text("triangles %i", stats.triangle_count);
+    ImGui::Text("draws %i", stats.drawcall_count);
+    ImGui::End();
+
+    if (ImGui::Begin("background")) {
+        ComputeEffect& selected = backgroundEffects[currentBackgroundEffect];
+
+        ImGui::Text("Selected effect: ", selected.name);
+        ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, backgroundEffects.size() - 1);
+        ImGui::InputFloat4("data1", (float*)&selected.data.data1);
+        ImGui::InputFloat4("data2", (float*)&selected.data.data2);
+        ImGui::InputFloat4("data3", (float*)&selected.data.data3);
+        ImGui::InputFloat4("data4", (float*)&selected.data.data4);
+        ImGui::End();
+    }
+
+    ImGui::Render();
+
+    update_scene();
+    draw();
+
+    const auto end = std::chrono::system_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    stats.frametime = elapsed.count() / 1000.f;
 }
 
 void VulkanEngine::update_scene()

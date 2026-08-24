@@ -9,7 +9,8 @@
 - [x] 固定并导入 Vulkan Guide 上游基线；
 - [x] 在 Windows + MSVC + Vulkan SDK 环境完成 `chapter_6` Release 构建；
 - [x] 完成 8 秒启动冒烟测试，程序稳定进入渲染循环；
-- [ ] 将教程式 `chapter-*` 代码拆分为可复用的 Engine / Sample；
+- [x] 建立独立 Platform 窗口层与 Runtime 主循环；
+- [ ] 将 Vulkan Renderer、输入和 Sample 完全移出教程式 `chapter-*`；
 - [ ] 实现代际资源句柄和延迟销毁；
 - [ ] 实现 Render Graph；
 - [ ] 实现异步资产上传与性能分析。
@@ -52,7 +53,7 @@ samples/         各模块的最小可运行样例
 tests/           单元、集成和回归测试
 ```
 
-目录将在对应模块真正开始实现时创建，避免先堆空壳架构。
+`engine/platform` 和 `engine/runtime` 已开始承载真实代码；其余目录仍将在对应模块真正实现时创建，避免先堆空壳架构。
 
 ## 来源与许可
 

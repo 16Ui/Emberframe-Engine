@@ -15,7 +15,7 @@ set_property(TARGET chapter_6 PROPERTY VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FI
 
 target_include_directories(chapter_6 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 
-target_link_libraries(chapter_6 vkguide_shared vkbootstrap imgui fastgltf::fastgltf)
+target_link_libraries(chapter_6 emberframe_runtime vkguide_shared vkbootstrap imgui fastgltf::fastgltf)
 
 add_custom_command(TARGET chapter_6 POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:chapter_6> $<TARGET_FILE_DIR:chapter_6>

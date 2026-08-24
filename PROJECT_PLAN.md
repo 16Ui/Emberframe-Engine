@@ -46,8 +46,11 @@ Emberframe-Engine/
 
 ### M1：从教程程序拆出引擎骨架
 
-- 建立 Launcher / Engine Runtime / Vulkan Backend 三层；
-- 把窗口、输入和时间从渲染器中剥离；
+- [x] 建立 Platform 窗口层和 Engine Runtime 主循环；
+- [x] 将窗口所有权与事件轮询从 `VulkanEngine` 中剥离；
+- [ ] 建立独立 Launcher / Sample 和 Vulkan Backend 目标；
+- [ ] 将 SDL 输入事件翻译为引擎事件，消除 Renderer 对 SDL 输入的直接依赖；
+- [ ] 把时间统计从渲染器中剥离；
 - 用 Composition Root 明确创建、启动和销毁顺序；
 - 保留一个与上游画面一致的回归 Sample。
 

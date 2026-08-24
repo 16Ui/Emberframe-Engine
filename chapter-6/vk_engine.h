@@ -227,7 +227,7 @@ public:
     static VulkanEngine& Get();
 
     // initializes everything in the engine
-    void init();
+    void init(SDL_Window* window);
 
     // shuts down the engine
     void cleanup();
@@ -241,8 +241,12 @@ public:
 
     void draw_geometry(VkCommandBuffer cmd);
 
-    // run main loop
-    void run();
+    // Temporary SDL-facing boundary. Input translation moves to Platform in a
+    // later milestone; Runtime already owns event polling and the main loop.
+    void process_event(SDL_Event& event);
+
+    // Render one frame. Runtime controls when this is called.
+    void tick();
 
     void update_scene();
 

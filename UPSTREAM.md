@@ -30,6 +30,8 @@ Piccolo 当前仅作为设计参考，不是代码依赖。未来如果复制或
 3. 错误路径或自动测试；
 4. 核心模块的性能或正确性证据。
 
+当前 `main` 已开始 M1 架构拆分：`engine/platform`、`engine/runtime`、`chapter-6/main.cpp` 和 `VulkanEngine` 生命周期接口属于个人改造。`chapter-6` 中其余渲染、资源、材质、场景和加载逻辑仍属于 Vulkan Guide 上游能力。
+
 比较个人改动时，可以使用：
 
 ```powershell
