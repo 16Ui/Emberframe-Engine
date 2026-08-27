@@ -13,6 +13,11 @@ add_subdirectory(third_party)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 set (CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 
+# First-party source files use UTF-8 so Chinese learning comments are decoded consistently by MSVC.
+if (MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 add_subdirectory(shared)
 add_subdirectory(engine)
 add_subdirectory(samples)
