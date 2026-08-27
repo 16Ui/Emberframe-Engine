@@ -17,6 +17,9 @@
 
 当前里程碑只是“可信、可运行的上游基线”，还不作为简历中的个人引擎成果。个人贡献边界见 [UPSTREAM.md](UPSTREAM.md)，阶段目标见 [PROJECT_PLAN.md](PROJECT_PLAN.md)。
 
+如果从零开始学习和共建，请从 [零基础共建路线](docs/learning/LEARNING_PATH.md) 和
+[第一课：SDL 窗口与事件循环](docs/learning/01_WINDOW_AND_EVENT_LOOP.md) 开始，不要直接阅读完整的 `chapter-6/vk_engine.cpp`。
+
 ## Windows 构建
 
 要求：Visual Studio 2022（Desktop development with C++）、CMake、Vulkan SDK。

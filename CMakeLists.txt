@@ -15,6 +15,7 @@ set (CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_SOURCE_DIR}/bin")
 
 add_subdirectory(shared)
 add_subdirectory(engine)
+add_subdirectory(samples)
 
 add_subdirectory(chapter-0)
 add_subdirectory(chapter-1)
