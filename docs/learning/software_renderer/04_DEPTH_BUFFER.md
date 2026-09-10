@@ -65,6 +65,30 @@ bin/Release/depth.ppm
 
 预期结果中，蓝色近三角形在重叠区域遮挡橙色远三角形；橙色未被遮挡的部分仍然可见。
 
+### 查询某个像素的候选深度
+
+```powershell
+.\bin\Release\emberframe_sr_04_depth.exe --probe 256 256
+```
+
+该像素同时被两个三角形覆盖。程序会打印近处蓝色深度 `0.2`、远处橙色深度 `0.8`，并指出较小的蓝色深度获胜。
+
+### 证明结果不依赖提交顺序
+
+```powershell
+.\bin\Release\emberframe_sr_04_depth.exe --reverse-order
+```
+
+它会先画远处、再画近处，并输出 `depth_reverse.ppm`。这张图应与默认 `depth.ppm` 一致。
+
+### 关闭深度测试制造失败
+
+```powershell
+.\bin\Release\emberframe_sr_04_depth.exe --disable-depth
+```
+
+输出 `depth_disabled.ppm`。默认顺序中橙色在后，因此没有深度测试时，重叠区域会被错误地覆盖成橙色。这说明颜色缓冲只保留最后一次写入，并不知道远近。
+
 ## 6. 与 Vulkan 的关系
 
 Vulkan 的 Depth Image 在 GPU 内存中承担相同职责，Graphics Pipeline 的深度测试阶段完成比较和写入。CPU 版本让我们能直接观察深度数组和比较条件，Vulkan 版本则把同样的逐像素工作并行交给 GPU。
