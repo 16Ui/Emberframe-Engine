@@ -11,6 +11,7 @@
 | 3 | [三角形与重心坐标](03_TRIANGLE_RASTERIZATION.md) | 已完成 | 待学习 |
 | 4 | [深度缓冲](04_DEPTH_BUFFER.md) | 已完成 | 待学习 |
 | 5 | [坐标变换与背面剔除](05_TRANSFORMS_AND_CULLING.md) | 已完成 | 待学习 |
+| 6 | [透视正确插值与纹理](06_PERSPECTIVE_CORRECT_TEXTURE.md) | 已完成 | 待学习 |
 
 ## 为什么按这个顺序
 
@@ -30,6 +31,7 @@ Framebuffer 提供 setPixel
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_03_triangle
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_04_depth
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_05_transforms
+.\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_06_perspective_texture
 ```
 
 每个程序会在 `bin/Release` 中生成同名可执行文件，并在运行后输出对应的 PPM 图片。
