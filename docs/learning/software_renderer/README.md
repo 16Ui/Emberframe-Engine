@@ -13,6 +13,7 @@
 | 5 | [坐标变换与背面剔除](05_TRANSFORMS_AND_CULLING.md) | 已完成 | 待学习 |
 | 6 | [透视正确插值与纹理](06_PERSPECTIVE_CORRECT_TEXTURE.md) | 已完成 | 待学习 |
 | 7 | [基础光照与 Shadow Map](07_LIGHTING_AND_SHADOW.md) | 已完成 | 待学习 |
+| 8 | [CPU Renderer 收尾整合](08_CPU_RENDERER_CAPSTONE.md) | 已完成 | 待学习 |
 
 ## 为什么按这个顺序
 
@@ -34,6 +35,7 @@ Framebuffer 提供 setPixel
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_05_transforms
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_06_perspective_texture
 .\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_07_lighting_shadow
+.\scripts\build-windows.ps1 -Config Release -Target emberframe_sr_08_cpu_renderer
 ```
 
 每个程序会在 `bin/Release` 中生成同名可执行文件，并在运行后输出对应的 PPM 图片。

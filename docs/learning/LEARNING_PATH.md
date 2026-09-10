@@ -12,8 +12,8 @@
 |---|---:|---|
 | 已掌握 | 2 / 20 | A1 CPU Framebuffer、B1 SDL 窗口与事件循环 |
 | 当前学习 | 1 / 20 | A2 Bresenham 直线 |
-| 代码已准备、尚未学习 | 6 / 20 | A3—A7、B2 Platform 与 Runtime 初版 |
-| 尚未开始 | 11 / 20 | 后续算法和 Vulkan 课程 |
+| 代码已准备、尚未学习 | 7 / 20 | A3—A8、B2 Platform 与 Runtime 初版 |
+| 尚未开始 | 10 / 20 | 后续 Vulkan 课程 |
 
 当前粗略掌握进度为 **10%**。这个百分比只统计 20 个知识单元，不代表整个引擎项目已经完成 10%，也不包含已经学过的 GAMES101/202 课程本身。
 
@@ -70,7 +70,7 @@ flowchart LR
 | A5 | 🧱 | [坐标变换与背面剔除](software_renderer/05_TRANSFORMS_AND_CULLING.md) | 旋转的实体立方体 | Model、View、Projection、Viewport 各自输入输出，背面剔除 |
 | A6 | 🧱 | [透视正确插值与纹理](software_renderer/06_PERSPECTIVE_CORRECT_TEXTURE.md) | 仿射/透视插值对照图 | 为什么屏幕空间线性插值会错、`1/w` 修正、UV 采样 |
 | A7 | 🧱 | [基础光照与 Shadow Map](software_renderer/07_LIGHTING_AND_SHADOW.md) | 光照场景和光源深度图 | 法线空间、Lambert/Blinn-Phong、Shadow Map 的深度比较 |
-| A8 | ⬜ | CPU Renderer 收尾项目 | 可交互模型查看器和性能记录 | 整合管线、拆分模块、固定场景回归、帧耗时分析 |
+| A8 | 🧱 | [CPU Renderer 收尾项目](software_renderer/08_CPU_RENDERER_CAPSTONE.md) | 可交互 OBJ 查看器和单帧统计 | 整合管线、职责拆分、固定场景回归、帧耗时分析 |
 
 详细构建目标和逐课入口见 [Software Renderer 学习索引](software_renderer/README.md)。
 

@@ -27,6 +27,9 @@ public:
     [[nodiscard]] bool setPixel(int x, int y, Color color);
     void clear(Color color);
 
+    // A8 的 SDL 查看器直接上传 RGB 字节；只提供只读访问，避免绕过边界检查修改内容。
+    [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept;
+
     [[nodiscard]] bool savePpm(const std::filesystem::path& outputPath) const;
 
 private:

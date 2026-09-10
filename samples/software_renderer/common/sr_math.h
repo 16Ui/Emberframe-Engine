@@ -218,4 +218,11 @@ inline Vec3 transformPoint(const Mat4& matrix, Vec3 point)
         transformed.z / transformed.w};
 }
 
+inline Vec3 transformDirection(const Mat4& matrix, Vec3 direction)
+{
+    // 方向没有位置，因此齐次分量为 0，矩阵中的平移不会影响它。
+    const Vec4 transformed = matrix * Vec4{direction.x, direction.y, direction.z, 0.0F};
+    return {transformed.x, transformed.y, transformed.z};
+}
+
 } // namespace emberframe::software

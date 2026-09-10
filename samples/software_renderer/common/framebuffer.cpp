@@ -56,6 +56,11 @@ void Framebuffer::clear(Color color)
     }
 }
 
+const std::vector<std::uint8_t>& Framebuffer::pixels() const noexcept
+{
+    return pixels_;
+}
+
 bool Framebuffer::savePpm(const std::filesystem::path& outputPath) const
 {
     std::ofstream output(outputPath, std::ios::binary);

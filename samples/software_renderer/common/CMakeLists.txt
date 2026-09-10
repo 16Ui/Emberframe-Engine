@@ -1,5 +1,7 @@
 add_library(emberframe_software_renderer_common STATIC
+  cpu_renderer.cpp
   framebuffer.cpp
+  obj_loader.cpp
 )
 
 target_include_directories(emberframe_software_renderer_common PUBLIC

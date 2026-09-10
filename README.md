@@ -20,7 +20,7 @@
 如果从零开始学习和共建，请从 [学习与项目进度路线图](docs/learning/LEARNING_PATH.md) 和
 [第一课：SDL 窗口与事件循环](docs/learning/01_WINDOW_AND_EVENT_LOOP.md) 开始，不要直接阅读完整的 `chapter-6/vk_engine.cpp`。
 
-图形算法学习线见 [Software Renderer 零基础学习索引](docs/learning/software_renderer/README.md)，目前已经搭建 Framebuffer、直线、三角形和深度缓冲四个连续 Sample。
+图形算法学习线见 [Software Renderer 零基础学习索引](docs/learning/software_renderer/README.md)。A1—A8 已形成从 Framebuffer 到可交互 OBJ CPU Renderer 的连续 Sample；代码准备完成不等于学习验收完成，掌握状态以总路线图为准。
 
 ## Windows 构建
 
