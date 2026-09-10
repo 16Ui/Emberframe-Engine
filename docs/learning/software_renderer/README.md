@@ -2,6 +2,8 @@
 
 这条线路通过 CPU 软件光栅化理解 GPU 渲染管线。代码已经按依赖关系准备好，但学习时仍应一次只进入一课：先运行、再读输入与输出、最后自己复述计算链。
 
+跨 Software Renderer、Vulkan 和正式引擎的状态统一记录在 [学习与项目进度路线图](../LEARNING_PATH.md)。本页只负责 Software Renderer 的逐课入口。
+
 | 顺序 | 主题 | 代码状态 | 学习状态 |
 |---:|---|---|---|
 | 1 | [CPU Framebuffer](01_CPU_FRAMEBUFFER.md) | 已完成 | 已完成 |
