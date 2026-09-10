@@ -1,9 +1,11 @@
 #include "framebuffer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <string>
 
 struct Point2f
 {
@@ -28,6 +30,60 @@ std::uint8_t interpolateChannel(float a, float b, float c)
 {
     const float value = std::clamp(a + b + c, 0.0F, 255.0F);
     return static_cast<std::uint8_t>(std::lround(value));
+}
+
+void printPixelProbe(
+    int pixelX,
+    int pixelY,
+    const Vertex2D& vertex0,
+    const Vertex2D& vertex1,
+    const Vertex2D& vertex2)
+{
+    const Point2f sample{
+        static_cast<float>(pixelX) + 0.5F,
+        static_cast<float>(pixelY) + 0.5F};
+    const float signedArea = edgeFunction(vertex0.position, vertex1.position, vertex2.position);
+    const std::array<float, 3> edgeWeights{{
+        edgeFunction(vertex1.position, vertex2.position, sample),
+        edgeFunction(vertex2.position, vertex0.position, sample),
+        edgeFunction(vertex0.position, vertex1.position, sample)}};
+    const bool allNonNegative =
+        edgeWeights[0] >= 0.0F && edgeWeights[1] >= 0.0F && edgeWeights[2] >= 0.0F;
+    const bool allNonPositive =
+        edgeWeights[0] <= 0.0F && edgeWeights[1] <= 0.0F && edgeWeights[2] <= 0.0F;
+    const bool inside = allNonNegative || allNonPositive;
+
+    std::cout << "pixel=(" << pixelX << ',' << pixelY << ")"
+              << ", sampleCenter=(" << sample.x << ',' << sample.y << ")\n";
+    std::cout << "signedArea=" << signedArea
+              << ", edgeWeights=(" << edgeWeights[0] << ',' << edgeWeights[1]
+              << ',' << edgeWeights[2] << ")\n";
+    std::cout << "inside=" << (inside ? "yes" : "no") << '\n';
+    if (!inside || std::abs(signedArea) < 0.0001F) {
+        return;
+    }
+
+    const float alpha = edgeWeights[0] / signedArea;
+    const float beta = edgeWeights[1] / signedArea;
+    const float gamma = edgeWeights[2] / signedArea;
+    const Color color{
+        interpolateChannel(
+            alpha * vertex0.color.red,
+            beta * vertex1.color.red,
+            gamma * vertex2.color.red),
+        interpolateChannel(
+            alpha * vertex0.color.green,
+            beta * vertex1.color.green,
+            gamma * vertex2.color.green),
+        interpolateChannel(
+            alpha * vertex0.color.blue,
+            beta * vertex1.color.blue,
+            gamma * vertex2.color.blue)};
+    std::cout << "barycentric=(" << alpha << ',' << beta << ',' << gamma << ')'
+              << ", sum=" << (alpha + beta + gamma) << '\n';
+    std::cout << "interpolatedColor=(" << static_cast<int>(color.red) << ','
+              << static_cast<int>(color.green) << ','
+              << static_cast<int>(color.blue) << ")\n";
 }
 
 void rasterizeTriangle(
@@ -101,13 +157,29 @@ void rasterizeTriangle(
 
 int main(int argc, char* argv[])
 {
-    (void)argc;
-
     Framebuffer framebuffer(512, 512, Color{20, 24, 32});
 
     const Vertex2D top{{256.0F, 40.0F}, {255, 70, 70}};
     const Vertex2D bottomLeft{{48.0F, 464.0F}, {70, 130, 255}};
     const Vertex2D bottomRight{{464.0F, 464.0F}, {70, 255, 130}};
+
+    if (argc == 4 && std::string(argv[1]) == "--probe") {
+        try {
+            printPixelProbe(
+                std::stoi(argv[2]),
+                std::stoi(argv[3]),
+                top,
+                bottomLeft,
+                bottomRight);
+        } catch (const std::exception& error) {
+            std::cerr << "Invalid probe coordinate: " << error.what() << '\n';
+            return 1;
+        }
+    } else if (argc != 1) {
+        std::cerr << "Usage: " << argv[0] << " [--probe pixelX pixelY]\n";
+        return 1;
+    }
+
     rasterizeTriangle(framebuffer, top, bottomLeft, bottomRight);
 
     const auto outputPath = outputPathBesideExecutable(argv[0], "triangle.ppm");
