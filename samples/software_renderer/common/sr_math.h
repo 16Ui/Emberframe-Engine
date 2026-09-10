@@ -184,6 +184,28 @@ inline Mat4 perspective(float verticalFovRadians, float aspect, float nearPlane,
     return result;
 }
 
+inline Mat4 orthographic(
+    float left,
+    float right,
+    float bottom,
+    float top,
+    float nearPlane,
+    float farPlane)
+{
+    if (right <= left || top <= bottom || nearPlane <= 0.0F || farPlane <= nearPlane) {
+        throw std::invalid_argument("Invalid orthographic projection parameters.");
+    }
+
+    Mat4 result = Mat4::identity();
+    result.at(0, 0) = 2.0F / (right - left);
+    result.at(1, 1) = 2.0F / (top - bottom);
+    result.at(2, 2) = -2.0F / (farPlane - nearPlane);
+    result.at(0, 3) = -(right + left) / (right - left);
+    result.at(1, 3) = -(top + bottom) / (top - bottom);
+    result.at(2, 3) = -(farPlane + nearPlane) / (farPlane - nearPlane);
+    return result;
+}
+
 inline Vec3 transformPoint(const Mat4& matrix, Vec3 point)
 {
     const Vec4 transformed = matrix * Vec4{point.x, point.y, point.z, 1.0F};
