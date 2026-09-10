@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="360" viewBox="0 0 720 360" role="img" aria-labelledby="title description">
+  <title id="title">Bresenham 从 (0,0) 到 (5,2) 的像素选择</title>
+  <desc id="description">蓝色方格是算法选择的六个像素，红线是连续理想直线。主轴 x 每次前进一步，误差跨过阈值时 y 才前进一步。</desc>
+  <rect width="720" height="360" fill="#141820"/>
+  <text x="70" y="28" fill="#f3f4f6" font-size="18" font-family="sans-serif">(0,0) → (5,2)：连续直线与离散像素</text>
+
+  <g transform="translate(90 50)">
+    <g fill="#3978d4" fill-opacity="0.72">
+      <rect x="0" y="160" width="80" height="80"/>
+      <rect x="80" y="160" width="80" height="80"/>
+      <rect x="160" y="80" width="80" height="80"/>
+      <rect x="240" y="80" width="80" height="80"/>
+      <rect x="320" y="0" width="80" height="80"/>
+      <rect x="400" y="0" width="80" height="80"/>
+    </g>
+
+    <g stroke="#667085" stroke-width="1" fill="none">
+      <path d="M0 0H480 M0 80H480 M0 160H480 M0 240H480"/>
+      <path d="M0 0V240 M80 0V240 M160 0V240 M240 0V240 M320 0V240 M400 0V240 M480 0V240"/>
+    </g>
+
+    <line x1="40" y1="200" x2="440" y2="40" stroke="#ff6464" stroke-width="4"/>
+    <g fill="#ffffff" font-size="14" font-family="monospace" text-anchor="middle">
+      <text x="40" y="205">0,0</text>
+      <text x="120" y="205">1,0</text>
+      <text x="200" y="125">2,1</text>
+      <text x="280" y="125">3,1</text>
+      <text x="360" y="45">4,2</text>
+      <text x="440" y="45">5,2</text>
+    </g>
+
+    <g fill="#cbd5e1" font-size="14" font-family="sans-serif" text-anchor="middle">
+      <text x="40" y="265">x=0</text>
+      <text x="120" y="265">x=1</text>
+      <text x="200" y="265">x=2</text>
+      <text x="280" y="265">x=3</text>
+      <text x="360" y="265">x=4</text>
+      <text x="440" y="265">x=5</text>
+    </g>
+    <g fill="#cbd5e1" font-size="14" font-family="sans-serif" text-anchor="end">
+      <text x="-12" y="45">y=2</text>
+      <text x="-12" y="125">y=1</text>
+      <text x="-12" y="205">y=0</text>
+    </g>
+  </g>
+
+  <g transform="translate(590 90)" font-family="sans-serif" font-size="14">
+    <rect width="22" height="22" fill="#3978d4" fill-opacity="0.72"/>
+    <text x="30" y="17" fill="#e5e7eb">选中像素</text>
+    <line x1="0" y1="57" x2="22" y2="57" stroke="#ff6464" stroke-width="4"/>
+    <text x="30" y="62" fill="#e5e7eb">理想直线</text>
+  </g>
+
+  <text x="90" y="340" fill="#aab2c0" font-size="15" font-family="sans-serif">每个 x 恰好选择一个像素；累计偏差跨过半行后，下一列改选相邻 y。</text>
+</svg>
