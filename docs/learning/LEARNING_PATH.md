@@ -32,8 +32,8 @@
 1. CPU Framebuffer、RGB 像素和图片输出；
 2. Bresenham 直线光栅化；
 3. 三角形填充与重心坐标；
-4. 深度缓冲和背面剔除；
-5. 模型、观察、投影和视口变换；
+4. 深度缓冲；
+5. 模型、观察、投影、视口变换和背面剔除；
 6. 透视正确插值、纹理和基础着色；
 7. 法线贴图与阴影映射；
 8. 将 CPU 算法结果与 Vulkan GPU 实现对照验证。
@@ -58,9 +58,10 @@
 ## 当前进度
 
 - 第一课：SDL 窗口与事件循环，代码和讲义已经建立；
-- Software Renderer 第一课：CPU Framebuffer、像素寻址和 PPM 输出已经建立；
-- 下一道关口：学习者能够解释二维像素坐标如何映射到连续的一维内存。
+- Software Renderer 第一课：CPU Framebuffer 已完成学习；
+- Software Renderer 第二至四课：直线、三角形和深度缓冲的代码与讲义已经搭建，尚未视为完成学习；
+- 下一道关口：从第二课开始，解释 Bresenham 如何用整数误差选择直线像素。
 
 第一课讲义见 [01_WINDOW_AND_EVENT_LOOP.md](01_WINDOW_AND_EVENT_LOOP.md)。
 
-Software Renderer 第一课讲义见 [software_renderer/01_CPU_FRAMEBUFFER.md](software_renderer/01_CPU_FRAMEBUFFER.md)。
+Software Renderer 学习索引见 [software_renderer/README.md](software_renderer/README.md)。

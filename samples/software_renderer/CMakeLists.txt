@@ -1,1 +1,5 @@
+add_subdirectory(common)
 add_subdirectory(01_framebuffer)
+add_subdirectory(02_lines)
+add_subdirectory(03_triangle)
+add_subdirectory(04_depth)
