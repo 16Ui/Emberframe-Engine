@@ -12,7 +12,7 @@
 
 当一个 Sample 的概念通过解释和运行验证后，再把稳定职责沉淀到 `engine/`。教程代码、学习代码和正式引擎代码必须能明确区分。
 
-## 依赖顺序
+## Vulkan 引擎线依赖顺序
 
 1. SDL 窗口、事件循环和显式生命周期；
 2. RAII 与 Platform 窗口封装；
@@ -26,6 +26,17 @@
 10. Buffer、Image、Descriptor 与资源所有权；
 11. Mesh、纹理和 glTF 场景；
 12. 代际 Handle、延迟销毁、Render Graph 与性能工具。
+
+## Software Renderer 图形算法线依赖顺序
+
+1. CPU Framebuffer、RGB 像素和图片输出；
+2. Bresenham 直线光栅化；
+3. 三角形填充与重心坐标；
+4. 深度缓冲和背面剔除；
+5. 模型、观察、投影和视口变换；
+6. 透视正确插值、纹理和基础着色；
+7. 法线贴图与阴影映射；
+8. 将 CPU 算法结果与 Vulkan GPU 实现对照验证。
 
 ## 每课工作方式
 
@@ -47,6 +58,9 @@
 ## 当前进度
 
 - 第一课：SDL 窗口与事件循环，代码和讲义已经建立；
-- 下一道关口：学习者能够解释 SDL 初始化、窗口创建、事件轮询和逆序清理的因果关系。
+- Software Renderer 第一课：CPU Framebuffer、像素寻址和 PPM 输出已经建立；
+- 下一道关口：学习者能够解释二维像素坐标如何映射到连续的一维内存。
 
 第一课讲义见 [01_WINDOW_AND_EVENT_LOOP.md](01_WINDOW_AND_EVENT_LOOP.md)。
+
+Software Renderer 第一课讲义见 [software_renderer/01_CPU_FRAMEBUFFER.md](software_renderer/01_CPU_FRAMEBUFFER.md)。

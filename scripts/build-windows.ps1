@@ -4,7 +4,9 @@ param(
 
     [string]$Target = "chapter_6",
 
-    [string]$VulkanSdk = $env:VULKAN_SDK
+    [string]$VulkanSdk = $env:VULKAN_SDK,
+
+    [switch]$BuildShaders
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +51,12 @@ try {
     cmake --preset windows-vs2022
     if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 
-    cmake --build --preset windows-release-chapter6 --config $Config --target Shaders $Target --parallel
+    $BuildTargets = @($Target)
+    if ($BuildShaders -or $Target -like "chapter_*") {
+        $BuildTargets = @("Shaders", $Target)
+    }
+
+    cmake --build --preset windows-release-chapter6 --config $Config --target $BuildTargets --parallel
     if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 }
 finally {

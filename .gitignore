@@ -2,4 +2,5 @@
 /bin
 /assets/brickadia
 .vs/
+.gradle/
 CMakeUserPresets.json
