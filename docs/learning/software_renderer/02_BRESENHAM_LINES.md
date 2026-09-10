@@ -68,6 +68,24 @@ bin/Release/lines.ppm
 
 预期结果是从中心向多个方向发散的彩色直线，覆盖缓坡、陡坡、水平和垂直情况。
 
+### 逐轮追踪模式
+
+短直线 `(0,0) → (5,2)`：
+
+```powershell
+.\bin\Release\emberframe_sr_02_lines.exe --trace 0 0 5 2
+```
+
+陡直线 `(2,1) → (4,9)`：
+
+```powershell
+.\bin\Release\emberframe_sr_02_lines.exe --trace 2 1 4 9
+```
+
+终端会逐轮打印：规范化后的主轴坐标、写入的真实像素、减去 `deltaY` 前后的误差、是否推进副轴，以及下一轮误差。追踪模式的图片输出为 `bin/Release/line_trace.ppm`。
+
+观察第二条命令：输入的 y 跨度更大，所以 `steep=yes`；规范化后主轴从 1 走到 9，但 `pixel=(x,y)` 会交换回原坐标。
+
 ## 6. 限制与下一课
 
 当前线宽固定为一个像素，也没有抗锯齿。它已经足够说明“连续几何怎样选择离散像素”。下一课会从一维线段覆盖推进到二维三角形区域覆盖。

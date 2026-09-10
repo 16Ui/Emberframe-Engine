@@ -4,6 +4,8 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <ostream>
+#include <string>
 
 struct Point2i
 {
@@ -11,7 +13,12 @@ struct Point2i
     int y;
 };
 
-void drawLine(Framebuffer& framebuffer, Point2i start, Point2i end, Color color)
+void drawLine(
+    Framebuffer& framebuffer,
+    Point2i start,
+    Point2i end,
+    Color color,
+    std::ostream* trace = nullptr)
 {
     // Bresenham 的核心循环沿变化更大的轴前进。
     // 陡线的 y 变化更大，交换 x/y 后可复用同一套循环。
@@ -27,13 +34,21 @@ void drawLine(Framebuffer& framebuffer, Point2i start, Point2i end, Color color)
         std::swap(start, end);
     }
 
+    if (trace != nullptr) {
+        *trace << "steep=" << (isSteep ? "yes" : "no")
+               << ", normalizedStart=(" << start.x << ',' << start.y << ')'
+               << ", normalizedEnd=(" << end.x << ',' << end.y << ")\n";
+        *trace << "step  mainX  sideY  pixel       errorBefore  subtractDy  advanceY  nextError\n";
+    }
+
     const int deltaX = end.x - start.x;
     const int deltaY = std::abs(end.y - start.y);
     int error = deltaX / 2;
     int y = start.y;
     const int yStep = start.y < end.y ? 1 : -1;
 
-    for (int x = start.x; x <= end.x; ++x) {
+    int step = 0;
+    for (int x = start.x; x <= end.x; ++x, ++step) {
         // 前面若交换过坐标，写像素时必须交换回来。
         const int pixelX = isSteep ? y : x;
         const int pixelY = isSteep ? x : y;
@@ -42,21 +57,58 @@ void drawLine(Framebuffer& framebuffer, Point2i start, Point2i end, Color color)
 
         // error 累积理想直线与当前整数像素行之间的偏差。
         // 偏差越过半个像素时，让 y 前进一步并补回 deltaX。
+        const int errorBefore = error;
         error -= deltaY;
+        const int errorAfterSubtract = error;
+        bool advancedY = false;
         if (error < 0) {
             y += yStep;
             error += deltaX;
+            advancedY = true;
+        }
+
+        if (trace != nullptr) {
+            *trace << step << "     " << x << "      " << (isSteep ? pixelX : pixelY)
+                   << "      (" << pixelX << ',' << pixelY << ")"
+                   << "      " << errorBefore
+                   << "            " << errorAfterSubtract
+                   << "           " << (advancedY ? "yes" : "no")
+                   << "       " << error << '\n';
         }
     }
 }
 
 int main(int argc, char* argv[])
 {
-    (void)argc;
-
     constexpr int width = 512;
     constexpr int height = 512;
     Framebuffer framebuffer(width, height, Color{20, 24, 32});
+
+    if (argc == 6 && std::string(argv[1]) == "--trace") {
+        try {
+            const Point2i start{std::stoi(argv[2]), std::stoi(argv[3])};
+            const Point2i end{std::stoi(argv[4]), std::stoi(argv[5])};
+            std::cout << "inputStart=(" << start.x << ',' << start.y << ")"
+                      << ", inputEnd=(" << end.x << ',' << end.y << ")\n";
+            drawLine(framebuffer, start, end, Color{80, 230, 140}, &std::cout);
+
+            const auto outputPath = outputPathBesideExecutable(argv[0], "line_trace.ppm");
+            if (!framebuffer.savePpm(outputPath)) {
+                std::cerr << "Failed to save line trace image: " << outputPath << '\n';
+                return 1;
+            }
+            std::cout << "Line trace image saved to: " << outputPath << '\n';
+            return 0;
+        } catch (const std::exception& error) {
+            std::cerr << "Invalid trace endpoints: " << error.what() << '\n';
+            return 1;
+        }
+    }
+
+    if (argc != 1) {
+        std::cerr << "Usage: " << argv[0] << " [--trace x0 y0 x1 y1]\n";
+        return 1;
+    }
 
     constexpr Point2i center{width / 2, height / 2};
     constexpr std::array<Point2i, 12> endpoints{
