@@ -12,8 +12,8 @@
 |---|---:|---|
 | 已掌握 | 2 / 20 | A1 CPU Framebuffer、B1 SDL 窗口与事件循环 |
 | 当前学习 | 1 / 20 | A2 Bresenham 直线 |
-| 代码已准备、尚未学习 | 3 / 20 | A3 三角形、A4 深度缓冲、B2 Platform 与 Runtime 初版 |
-| 尚未开始 | 14 / 20 | 后续算法和 Vulkan 课程 |
+| 代码已准备、尚未学习 | 4 / 20 | A3 三角形、A4 深度缓冲、A5 坐标变换、B2 Platform 与 Runtime 初版 |
+| 尚未开始 | 13 / 20 | 后续算法和 Vulkan 课程 |
 
 当前粗略掌握进度为 **10%**。这个百分比只统计 20 个知识单元，不代表整个引擎项目已经完成 10%，也不包含已经学过的 GAMES101/202 课程本身。
 
@@ -67,7 +67,7 @@ flowchart LR
 | A2 | 🟡 | [Bresenham 直线](software_renderer/02_BRESENHAM_LINES.md) | `lines.ppm` | 陡峭轴交换、端点排序、整数误差累计、八个方向连续画线 |
 | A3 | 🧱 | [三角形与重心坐标](software_renderer/03_TRIANGLE_RASTERIZATION.md) | `triangle.ppm` | 包围盒、边函数、像素中心采样、重心权重和属性插值 |
 | A4 | 🧱 | [深度缓冲](software_renderer/04_DEPTH_BUFFER.md) | `depth.ppm` | 深度插值、逐像素比较、绘制顺序与遮挡结果解耦 |
-| A5 | ⬜ | 模型与坐标变换 | 旋转的线框/实体模型 | Model、View、Projection、Viewport 各自输入输出，背面剔除 |
+| A5 | 🧱 | [坐标变换与背面剔除](software_renderer/05_TRANSFORMS_AND_CULLING.md) | 旋转的实体立方体 | Model、View、Projection、Viewport 各自输入输出，背面剔除 |
 | A6 | ⬜ | 透视正确插值与纹理 | 带纹理模型 | 为什么屏幕空间线性插值会错、`1/w` 修正、UV 采样 |
 | A7 | ⬜ | 法线、基础光照与阴影 | 可调光源场景 | 法线空间、Lambert/Blinn-Phong、Shadow Map 的深度比较 |
 | A8 | ⬜ | CPU Renderer 收尾项目 | 可交互模型查看器和性能记录 | 整合管线、拆分模块、固定场景回归、帧耗时分析 |
