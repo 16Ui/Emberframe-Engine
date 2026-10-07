@@ -1,0 +1,35 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gpu_shadow_precision.glsl"
+layout(local_size_x=128) in;
+layout(rgba32f,set=0,binding=2) uniform readonly image2D sourcePrefix;
+layout(rgba32f,set=0,binding=3) uniform writeonly image2D targetPrefix;
+layout(push_constant) uniform Scan { int axis; } scan;
+shared vec4 valuesHi[128],valuesLo[128];
+shared vec4 carryHi,carryLo;
+void main() {
+    int lane=int(gl_LocalInvocationID.x),line=int(gl_WorkGroupID.x);
+    ivec2 size=imageSize(targetPrefix);size.x/=2;int length=scan.axis==0 ? size.x:size.y;
+    if(lane==0) {carryHi=vec4(0);carryLo=vec4(0);}
+    barrier();
+    // 每组一行/列，128 个线程分段 inclusive scan；没有 subgroup/float atomics。
+    // 第二次 dispatch 必须在第一次写入后 barrier，完成二维 SAT。
+    for(int base=0;base<length;base+=128) {
+        int t=base+lane;ivec2 p=scan.axis==0 ? ivec2(t,line):ivec2(line,t);
+        // 行扫描输入为原始矩；列扫描输入为交错的 high/low 行前缀。
+        valuesHi[lane]=t<length ? imageLoad(sourcePrefix,scan.axis==0?p:ivec2(p.x*2,p.y)):vec4(0);
+        valuesLo[lane]=t<length&&scan.axis!=0 ? imageLoad(sourcePrefix,ivec2(p.x*2+1,p.y)):vec4(0);
+        barrier();
+        for(int offset=1;offset<128;offset*=2) {
+            ShadowSum add=lane>=offset ? ShadowSum(valuesHi[lane-offset],valuesLo[lane-offset]):ShadowSum(vec4(0),vec4(0));
+            barrier();
+            ShadowSum result=shadow_sum_add(ShadowSum(valuesHi[lane],valuesLo[lane]),add);
+            valuesHi[lane]=result.hi;valuesLo[lane]=result.lo;barrier();
+        }
+        ShadowSum result=shadow_sum_add(ShadowSum(valuesHi[lane],valuesLo[lane]),ShadowSum(carryHi,carryLo));
+        if(t<length) {imageStore(targetPrefix,ivec2(p.x*2,p.y),result.hi);imageStore(targetPrefix,ivec2(p.x*2+1,p.y),result.lo);}
+        barrier();
+        if(lane==0) {ShadowSum next=shadow_sum_add(ShadowSum(carryHi,carryLo),ShadowSum(valuesHi[127],valuesLo[127]));carryHi=next.hi;carryLo=next.lo;}
+        barrier();
+    }
+}

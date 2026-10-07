@@ -1,0 +1,33 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec3 hdr=efClean(efFetch(efSource,p).rgb),base=ef.flags.y!=0 ? efClean(efFetch(efBaseline,p).rgb):vec3(0);
+    vec3 indirect=base;vec4 wp=efFetch(efPosition,p);
+    if(wp.w>.5) {
+        vec4 material=efFetch(efAlbedo,p),nr=efFetch(efNormal,p);
+        vec3 n=efUnit(nr.xyz,vec3(0,0,1)),v=efUnit(ef.cameraNear.xyz-wp.xyz,n);
+        vec3 fresnel=mix(vec3(.04),material.rgb,clamp(material.w,0,1));
+        fresnel+=(1-fresnel)*pow(1-max(dot(n,v),0),5);
+        vec3 diffuse=(1-fresnel)*material.rgb*(1-clamp(material.w,0,1));
+        float ao=clamp(efFetch(efEmission,p).w,0,1)*clamp(efFetch(efOcclusion,p).r,0,1);
+        // 无 Lighting baseline 时，caller HDR 必须不含间接；生成解析 sky fallback。
+        vec3 fallback=efClean(mix(ef.skyBottomRadius.xyz,ef.skyTopFar.xyz,n.y*.5+.5))*(diffuse+fresnel)*ao;
+        vec3 reference=ef.flags.y!=0 ? base:fallback;
+        if(ef.modes.y==0)indirect=reference;
+        else if(ef.modes.y==6)indirect=vec3(0);
+        else if(ef.modes.y>=3&&ef.modes.y<=5)indirect=efClean(efFetch(efAux,p).rgb)*ao;
+        else {
+            vec4 traced=efFetch(efAux,p);
+            // baseline 只有总 IBL，故使用 F/diffuse 的逐通道比例近似拆 lobe。
+            // 不宣称精确 split-sum；总 baseline 仍只减一次，未命中严格保留 fallback。
+            vec3 specularFraction=clamp(fresnel/max(diffuse+fresnel,vec3(.0001)),0,1);
+            vec3 retained=reference*(ef.modes.y==1 ? 1-specularFraction:specularFraction);
+            vec3 replacement=retained+efClean(traced.rgb)*ao;
+            indirect=mix(reference,replacement,clamp(traced.w,0,1));
+        }
+        hdr=max(hdr-base,vec3(0))+indirect;
+    } // sky/transparent-only pixels retain the input HDR (no surface AO).
+    imageStore(efOut,p,vec4(efClean(hdr),1));imageStore(efOutAux,p,vec4(efClean(indirect),1));
+}

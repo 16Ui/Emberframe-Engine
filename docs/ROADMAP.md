@@ -14,19 +14,25 @@
 
 将教程式单体代码拆为 composition root、应用循环、时间、输入、窗口、Renderer 和 GPU Resource；参考 Piccolo 的模块边界，但不照搬全局上下文。
 
-## 阶段 2：渲染框架
+## 阶段 2：Vulkan 渲染闭环
 
-先保持单 Vulkan 后端，不提前建设空泛的多 API RHI。完成 Command/Frame 组织、Render Graph、Shader/Pipeline 管理、资源上传和基础场景渲染。
+先保持单 Vulkan 后端，不提前建设空泛的多 API RHI。完成设备、Swapchain、Command/Frame、同步、Shader/Pipeline、Descriptor、Buffer/Image 和 glTF 场景的可解释闭环；在增加 PBR 前加入 Vulkan Timestamp、固定场景和 RenderDoc 回归基线。
 
-## 阶段 3：场景与资源
+## 阶段 3：PBR 与实时渲染主线
 
-场景组织、组件模型、版本化序列化、代际资源句柄、后台解析、GPU 上传队列、依赖和热重载。
+将上游名义上的 `mesh_pbr.frag` 扩展为真实 Metallic-Roughness PBR：线性颜色空间、Cook–Torrance、法线贴图、直接光、Diffuse/Specular IBL、HDR 与 Tone Mapping。随后完成 Shadow Bias、PCF、CSM 和必要的后处理，并为每项保留调试视图和 GPU 时间。
 
-## 阶段 4：引擎能力
+详细范围与面试验收见 [`RENDERING_INTERVIEW_TRACK.md`](RENDERING_INTERVIEW_TRACK.md)。
+
+## 阶段 4：Render Graph、场景与资源
+
+用真实的 Shadow、Lighting 和 Post-process Pass 驱动 Render Graph；完成场景组织、版本化序列化、代际资源句柄、后台解析、GPU 上传队列、依赖和热重载。
+
+## 阶段 5：引擎能力
 
 任务系统、调试绘制、CPU/GPU Profiler 和回归场景优先；动画与物理根据求职时间再扩展。
 
-## 阶段 5：作品化
+## 阶段 6：作品化
 
 稳定 Demo、性能对比、架构文档、故障复盘、构建说明和面试问答。
 

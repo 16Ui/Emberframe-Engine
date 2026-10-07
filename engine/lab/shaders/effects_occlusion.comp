@@ -1,0 +1,68 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+float primitiveIntegral(float a,float b,float t) {
+    float s=sin(t);return .5*a*s*s+b*(.5*t-.25*sin(2*t));
+}
+// GTAO cosine-weighted horizon integral, split at theta=0 (|sin(theta)|)。
+float horizonIntegral(float a,float b,float negativeHorizon,float positiveHorizon) {
+    float gamma=atan(b,a),lo=max(-negativeHorizon,gamma-EF_PI*.5),hi=min(positiveHorizon,gamma+EF_PI*.5);
+    if(lo>=hi)return 0;float result=0;
+    if(lo<0)result+=primitiveIntegral(a,b,lo)-primitiveIntegral(a,b,min(hi,0));
+    if(hi>0)result+=primitiveIntegral(a,b,hi)-primitiveIntegral(a,b,max(lo,0));
+    return max(result,0);
+}
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec4 center=efFetch(efPosition,p);float radius=ef.skyBottomRadius.w,visibility=1;
+    if(center.w>.5&&ef.modes.x!=0&&radius>1e-5&&ef.temporal.y>0) {
+        vec3 n=efUnit(efFetch(efNormal,p).xyz,vec3(0,0,1));float bias=max(.0001,radius*.003);
+        float rotation=2*EF_PI*efRandom(p,0u);
+        if(ef.modes.x==1) {
+            mat3 basis=efFrame(n);int count=clamp(ef.modes.z,8,64);float blocked=0;
+            for(int i=0;i<count;i++) {
+                float u=(float(i)+.5)/float(count),phi=2*EF_PI*efRadical(uint(i+1))+rotation;
+                vec3 d=basis*vec3(sqrt(u)*cos(phi),sqrt(u)*sin(phi),sqrt(1-u));
+                float sampleDistance=radius*(.15+.85*float((i*7+3)%count)/float(count));
+                vec3 probe=center.xyz+n*bias+d*sampleDistance;vec2 uv;
+                if(!efProject(probe,ef.currentVP,uv))continue;
+                vec4 q=efFetch(efPosition,ivec2(uv*vec2(ef.dimensions.xy)));
+                vec3 delta=q.xyz-center.xyz;float distanceToSurface=length(delta);
+                if(q.w>.5&&distanceToSurface<radius&&dot(delta,n)>bias&&efDepth(q.xyz)<efDepth(probe)-bias)
+                    blocked+=smoothstep(0,.2*radius,radius-distanceToSurface);
+            }
+            visibility=1-blocked/float(count);
+        } else {
+            vec3 v=efUnit(ef.cameraNear.xyz-center.xyz,vec3(0,0,1));
+            vec3 right=ef.inverseView[0].xyz,t0=efUnit(right-v*dot(right,v),efFrame(v)[0]),b0=cross(v,t0);
+            // 世界半径端点投影得到屏幕采样长度，不把 reverse-Z 当线性深度使用。
+            // 半径端点允许出屏幕；投影长度不能因 viewport 裁剪切换到另一套焦距。
+            vec4 clipCenter=ef.currentVP*vec4(center.xyz,1),clipRadius=ef.currentVP*vec4(right*radius,0);
+            vec2 screenRadius=(clipRadius.xy*clipCenter.w-clipCenter.xy*clipRadius.w)
+                *vec2(ef.dimensions.xy)*(.5/(clipCenter.w*clipCenter.w));
+            float radiusPixels=clamp(length(screenRadius),1,128);
+            int slices=clamp(ef.modes.z,2,12),steps=clamp(ef.modes.z,4,24);visibility=0;
+            for(int slice=0;slice<slices;slice++) {
+                float phi=EF_PI*(float(slice)+rotation/(2*EF_PI))/float(slices);
+                vec3 t=t0*cos(phi)+b0*sin(phi);vec4 clipT=ef.currentVP*vec4(t,0);
+                vec2 derivative=(clipT.xy*clipCenter.w-clipCenter.xy*clipT.w)*vec2(ef.dimensions.xy);
+                vec2 screenDirection=length(derivative)>1e-6 ? normalize(derivative):vec2(1,0);
+                float horizons[2]=float[2](EF_PI,EF_PI);
+                for(int side=0;side<2;side++)for(int k=0;k<steps;k++) {
+                    float u=float(k)/float(max(steps-1,1)),r=1+(radiusPixels-1)*u*u;
+                    ivec2 q=ivec2(floor(vec2(p)+screenDirection*r*(side==0 ? -1:1)+.5));
+                    if(!efInside(q,ef.dimensions.xy)||all(equal(q,p)))continue;
+                    vec4 wp=efFetch(efPosition,q);vec3 delta=wp.xyz-center.xyz;float d=length(delta);
+                    if(wp.w<.5||d<=bias||d>radius||dot(delta,n)<=bias)continue;
+                    // radius fade 防止半径边界跳变；无遮挡 horizon=pi 的积分=1。
+                    float angle=acos(clamp(dot(delta/d,v),-1,1));
+                    angle=mix(EF_PI,angle,smoothstep(0,.2*radius,radius-d));
+                    horizons[side]=min(horizons[side],angle);
+                }
+                visibility+=horizonIntegral(dot(n,v),dot(n,t),horizons[0],horizons[1]);
+            }
+            visibility/=float(slices);
+        }
+    }
+    float ao=clamp(1-ef.temporal.y*(1-visibility),0,1);imageStore(efOut,p,vec4(ao,ao,ao,1));
+}

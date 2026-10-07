@@ -1,0 +1,29 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec3 current=efClean(efFetch(efSource,p).rgb),old;vec4 moments;vec2 previousUV;
+    bool valid=efReproject(p,old,moments,previousUV);float alpha=clamp(ef.temporal.x,0,1),historyLength=1;
+    if(valid) {
+        old=efClampHistory(p,old,ep.control.x==2 ? 3.:(ep.control.x==1 ? 2.:1.25));
+        historyLength=min(max(moments.w,1)+1,64);
+        if(ep.control.x==2)alpha=max(alpha,1/historyLength); // SVGF early accumulation。
+        float motion=length((vec2(p)+.5)/vec2(ef.dimensions.xy)-previousUV);
+        if(ep.control.x==0)alpha=max(alpha,clamp(motion*4,0,.8));
+    } else alpha=1;
+    vec3 result=mix(old,current,alpha);
+    float luminance=efLuminance(current),m1=luminance,m2=luminance*luminance;
+    if(valid) {m1=mix(moments.y,m1,alpha);m2=mix(moments.z,m2,alpha);}
+    float variance=max(m2-m1*m1,0);
+    if(ep.control.x==2&&historyLength<4&&efFetch(efPosition,p).w>.5) {
+        float sum=0,second=0,weights=0;
+        for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) {
+            ivec2 q=p+ivec2(x,y);if(!efInside(q,ef.dimensions.xy))continue;
+            float w=efGeometryWeight(p,q,1),l=efLuminance(efClean(efFetch(efSource,q).rgb));
+            sum+=l*w;second+=l*l*w;weights+=w;
+        }
+        float local=sum/max(weights,.001);variance=max(variance,max(second/max(weights,.001)-local*local,0)*4/historyLength);
+    }
+    imageStore(efOut,p,vec4(efClean(result),1));imageStore(efOutAux,p,vec4(variance,m1,m2,historyLength));
+}

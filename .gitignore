@@ -4,3 +4,18 @@
 .vs/
 .gradle/
 CMakeUserPresets.json
+
+# Workbench screenshots, runtime project saves, caches and machine-specific reports.
+/output/
+
+# 免费示例可通过脚本重新下载；来源/使用说明保留在仓库。
+/assets/import_samples/models/
+/assets/import_samples/textures/
+/assets/import_samples/downloads/
+
+# 本地模型库保留索引/许可来源，模型与原始包不默认上传到 Git。
+/assets/model_library/01_anime/
+/assets/model_library/02_cartoon/
+/assets/model_library/03_realistic/
+/assets/model_library/_archives/
+/assets/model_library/04_ready_static/

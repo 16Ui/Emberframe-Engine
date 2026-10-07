@@ -1,0 +1,65 @@
+{
+  "assets": [
+    {
+      "name": "AvatarSample B — VRoid Project / pixiv Inc.",
+      "group": "Anime",
+      "files": [{"url":"https://raw.githubusercontent.com/pixiv/ChatVRM/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm","path":"01_anime/AvatarSample_B/AvatarSample_B.vrm","bytes":21047556}]
+    },
+    {
+      "name": "VRM1 Constraint Twist Sample — pixiv Inc.",
+      "group": "Anime",
+      "files": [
+        {"url":"https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm","path":"01_anime/ConstraintTwist/VRM1_Constraint_Twist_Sample.vrm","bytes":10776032},
+        {"url":"https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/README.md","path":"01_anime/ConstraintTwist/SOURCE.md","bytes":0}
+      ]
+    },
+    {
+      "name": "AliciaSolid — DWANGO (personal local use; redistribution restricted)",
+      "group": "Anime",
+      "files": [{"url":"https://raw.githubusercontent.com/vrm-c/UniVRM/0b540f390eca11f1841ca3f4a380c1a0f9414809/Tests/Models/Alicia_vrm-0.51/AliciaSolid_vrm-0.51.vrm","path":"01_anime/AliciaSolid/AliciaSolid_vrm-0.51.vrm","bytes":7878712}]
+    },
+    {
+      "name": "Seed-san — VirtualCast, Inc. (credit required)",
+      "group": "Anime",
+      "files": [
+        {"url":"https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san/vrm/Seed-san.vrm","path":"01_anime/SeedSan/Seed-san.vrm","bytes":10917800},
+        {"url":"https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san/README.md","path":"01_anime/SeedSan/SOURCE.md","bytes":0}
+      ]
+    },
+    {
+      "name": "Kenney Mini Characters",
+      "group": "Cartoon",
+      "files": [{"url":"https://kenney.nl/media/pages/assets/mini-characters/bfc7e272b4-1774770718/kenney_mini-characters.zip","path":"_archives/kenney_mini-characters.zip","bytes":2403059}],
+      "archive": "_archives/kenney_mini-characters.zip",
+      "extract_to": "02_cartoon/MiniCharacters"
+    },
+    {
+      "name": "Kenney Nature Kit",
+      "group": "Cartoon",
+      "files": [{"url":"https://kenney.nl/media/pages/assets/nature-kit/37ac38a37b-1677698939/kenney_nature-kit.zip","path":"_archives/kenney_nature-kit.zip","bytes":10537521}],
+      "archive": "_archives/kenney_nature-kit.zip",
+      "extract_to": "02_cartoon/NatureKit"
+    },
+    {
+      "name": "Kenney City Kit Suburban",
+      "group": "Cartoon",
+      "files": [{"url":"https://kenney.nl/media/pages/assets/city-kit-suburban/2c871b7af2-1745479373/kenney_city-kit-suburban_20.zip","path":"_archives/kenney_city-kit-suburban_20.zip","bytes":3038740}],
+      "archive": "_archives/kenney_city-kit-suburban_20.zip",
+      "extract_to": "02_cartoon/CityKitSuburban"
+    },
+    {
+      "name": "Kenney Cube Pets",
+      "group": "Cartoon",
+      "files": [{"url":"https://kenney.nl/media/pages/assets/cube-pets/44e58e945f-1774520254/kenney_cube-pets_1.0.zip","path":"_archives/kenney_cube-pets.zip","bytes":2812444}],
+      "archive": "_archives/kenney_cube-pets.zip",
+      "extract_to": "02_cartoon/CubePets"
+    },
+    {
+      "name": "Kenney Food Kit",
+      "group": "Cartoon",
+      "files": [{"url":"https://kenney.nl/media/pages/assets/food-kit/83086fa91c-1719418518/kenney_food-kit.zip","path":"_archives/kenney_food-kit.zip","bytes":4606270}],
+      "archive": "_archives/kenney_food-kit.zip",
+      "extract_to": "02_cartoon/FoodKit"
+    }
+  ]
+}

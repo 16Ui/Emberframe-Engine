@@ -1,0 +1,28 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec3 color=efClean(efFetch(efSource,p).rgb);vec4 wp=efFetch(efPosition,p);
+    if(wp.w>.5) {
+        if(ef.flags.z!=0) {
+            vec3 n=efUnit(efFetch(efNormal,p).xyz,vec3(0,0,1));float depth=max(efDepth(wp.xyz),.001),edge=0;
+            for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) {
+                ivec2 q=p+ivec2(x,y);if(!efInside(q,ef.dimensions.xy))continue;
+                vec4 b=efFetch(efPosition,q);vec3 nb=efUnit(efFetch(efNormal,q).xyz,n);
+                edge=max(edge,b.w<.5 ? 1:smoothstep(.025,.08,abs(efDepth(b.xyz)-depth)/depth));
+                edge=max(edge,smoothstep(.15,.45,1-dot(n,nb)));
+                if(ef.extensions.y!=0&&any(greaterThan(abs(efFetch(efMeta,p).xy-efFetch(efMeta,q).xy),vec2(.1))))edge=1;
+            }
+            color*=1-.9*edge;
+        }
+        if(ef.flags.w!=0) {
+            float darkness=1-clamp(efLuminance(color),0,1),ink=0;
+            float diagonal=mod(float(p.x+p.y),7),crossLine=mod(float(p.x-p.y+4096),9);
+            if(darkness>.25&&diagonal<1.25)ink=.4;
+            if(darkness>.6&&crossLine<1.25)ink=max(ink,.6);
+            color*=1-ink;
+        }
+    }
+    imageStore(efOut,p,vec4(color,1));
+}

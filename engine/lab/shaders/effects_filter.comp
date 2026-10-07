@@ -1,0 +1,27 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec3 center=efClean(efFetch(efSource,p).rgb),sum=vec3(0);float weights=0,varianceSum=0;
+    vec4 centerMoments=efFetch(efAux,p);float centerVariance=max(centerMoments.x,0);
+    int stepSize=ep.control.x==1 ? max(ep.control.y,1):1,radius=ep.control.x==1 ? 2:clamp(ep.control.y,1,4);
+    float kernel[5]=float[5](1./16,1./4,3./8,1./4,1./16);
+    for(int y=-radius;y<=radius;y++)for(int x=-radius;x<=radius;x++) {
+        ivec2 q=p+ivec2(x,y)*stepSize;if(!efInside(q,ef.dimensions.xy))continue;
+        vec3 color=efClean(efFetch(efSource,q).rgb);float w=efGeometryWeight(p,q,float(stepSize));
+        if(ep.control.x==1) {
+            float variance=max(efFetch(efAux,q).x,0);
+            float sigma=4*sqrt(max(centerVariance+variance,.000001))+.0001;
+            w*=kernel[x+2]*kernel[y+2]*exp(-abs(efLuminance(center)-efLuminance(color))/sigma);
+            varianceSum+=w*w*variance;
+        } else {
+            w*=exp(-float(x*x+y*y)/8);
+            if(ep.control.x==0)w*=exp(-length(color-center)/max(.1,efLuminance(center)*.5));
+        }
+        sum+=color*w;weights+=w;
+    }
+    vec3 result=weights>1e-6 ? sum/weights:center;
+    imageStore(efOut,p,vec4(efClean(result),1));
+    if(ep.control.x==1)imageStore(efOutAux,p,vec4(varianceSum/max(weights*weights,.000001),centerMoments.yzw));
+}

@@ -1,0 +1,4 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#define GPU_LIGHTING_VALIDATION
+#include "gpu_lighting.glsl"

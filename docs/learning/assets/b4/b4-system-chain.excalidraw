@@ -1,0 +1,522 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "type": "text", "id": "title", "x": 50, "y": 35, "width": 900, "height": 40,
+      "text": "从 B3 到 Vulkan：组件怎样真正串起来", "originalText": "从 B3 到 Vulkan：组件怎样真正串起来",
+      "fontSize": 30, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 101001,
+      "version": 1, "versionNonce": 101002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "subtitle", "x": 50, "y": 82, "width": 1200, "height": 25,
+      "text": "先分清“生成 exe”和“exe 运行”两条线，再看 Instance、Messenger、Surface 从哪里来。",
+      "originalText": "先分清“生成 exe”和“exe 运行”两条线，再看 Instance、Messenger、Surface 从哪里来。",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 101003,
+      "version": 1, "versionNonce": 101004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "build_title", "x": 50, "y": 135, "width": 400, "height": 30,
+      "text": "① 编译 / 链接阶段：程序还没启动", "originalText": "① 编译 / 链接阶段：程序还没启动",
+      "fontSize": 22, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 110001,
+      "version": 1, "versionNonce": 110002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "source_shape", "x": 65, "y": 220, "width": 270, "height": 100,
+      "strokeColor": "#c2410c", "backgroundColor": "#fed7aa", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 111001,
+      "version": 1, "versionNonce": 111002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "source_text", "x": 90, "y": 243, "width": 220, "height": 55,
+      "text": "EmberFrame C++\n#include <vulkan/vulkan.h>", "originalText": "EmberFrame C++\n#include <vulkan/vulkan.h>",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 111003,
+      "version": 1, "versionNonce": 111004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "header_shape", "x": 410, "y": 175, "width": 350, "height": 95,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 112001,
+      "version": 1, "versionNonce": 112002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "header_text", "x": 438, "y": 194, "width": 294, "height": 60,
+      "text": "SDK\\Include\\vulkan\\vulkan.h\n声明 VkInstance、vkCreateInstance 等", "originalText": "SDK\\Include\\vulkan\\vulkan.h\n声明 VkInstance、vkCreateInstance 等",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 112003,
+      "version": 1, "versionNonce": 112004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "import_shape", "x": 410, "y": 300, "width": 350, "height": 95,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 113001,
+      "version": 1, "versionNonce": 113002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "import_text", "x": 438, "y": 320, "width": 294, "height": 55,
+      "text": "SDK\\Lib\\vulkan-1.lib\n提供 Loader 的导入符号", "originalText": "SDK\\Lib\\vulkan-1.lib\n提供 Loader 的导入符号",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 113003,
+      "version": 1, "versionNonce": 113004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "linker_shape", "x": 850, "y": 225, "width": 300, "height": 120,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 114001,
+      "version": 1, "versionNonce": 114002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "linker_text", "x": 895, "y": 250, "width": 210, "height": 70,
+      "text": "编译器 + 链接器\nCMake: Vulkan::Vulkan", "originalText": "编译器 + 链接器\nCMake: Vulkan::Vulkan",
+      "fontSize": 19, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#ffffff", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 114003,
+      "version": 1, "versionNonce": 114004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "exe_shape", "x": 1245, "y": 235, "width": 260, "height": 100,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 115001,
+      "version": 1, "versionNonce": 115002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "exe_text", "x": 1280, "y": 260, "width": 190, "height": 55,
+      "text": "EmberFrame.exe\n现在才能运行", "originalText": "EmberFrame.exe\n现在才能运行",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 115003,
+      "version": 1, "versionNonce": 115004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "source_to_linker", "x": 335, "y": 270, "width": 515, "height": 15,
+      "strokeColor": "#c2410c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 116001,
+      "version": 1, "versionNonce": 116002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[515,15]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "header_to_linker", "x": 760, "y": 222, "width": 90, "height": 35,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 116003,
+      "version": 1, "versionNonce": 116004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[90,35]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "lib_to_linker", "x": 760, "y": 347, "width": 90, "height": -35,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 116005,
+      "version": 1, "versionNonce": 116006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[90,-35]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "linker_to_exe", "x": 1150, "y": 285, "width": 95, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 116007,
+      "version": 1, "versionNonce": 116008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[95,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "rectangle", "id": "layer_file_shape", "x": 1210, "y": 360, "width": 370, "height": 90,
+      "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 117001,
+      "version": 1, "versionNonce": 117002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "layer_file_text", "x": 1235, "y": 378, "width": 320, "height": 58,
+      "text": "SDK\\Bin\\VkLayer_khronos_validation.dll\n运行时可选检查层；不是 GPU 实现", "originalText": "SDK\\Bin\\VkLayer_khronos_validation.dll\n运行时可选检查层；不是 GPU 实现",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 117003,
+      "version": 1, "versionNonce": 117004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "divider_build_runtime", "x": 50, "y": 475, "width": 1530, "height": 0,
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 118001,
+      "version": 1, "versionNonce": 118002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[1530,0]]
+    },
+    {
+      "type": "text", "id": "runtime_title", "x": 50, "y": 510, "width": 500, "height": 30,
+      "text": "② 程序运行阶段：Loader 发现组件并建立调用链", "originalText": "② 程序运行阶段：Loader 发现组件并建立调用链",
+      "fontSize": 22, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 201001,
+      "version": 1, "versionNonce": 201002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "app_shape", "x": 50, "y": 610, "width": 250, "height": 105,
+      "strokeColor": "#c2410c", "backgroundColor": "#fed7aa", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 202001,
+      "version": 1, "versionNonce": 202002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "app_text", "x": 88, "y": 634, "width": 175, "height": 55,
+      "text": "EmberFrame.exe\n调用 vk... 函数", "originalText": "EmberFrame.exe\n调用 vk... 函数",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 202003,
+      "version": 1, "versionNonce": 202004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "loader_shape", "x": 390, "y": 585, "width": 330, "height": 155,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 203001,
+      "version": 1, "versionNonce": 203002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "loader_text", "x": 425, "y": 612, "width": 260, "height": 100,
+      "text": "Vulkan Loader\nC:\\Windows\\System32\\vulkan-1.dll\n系统运行时组件\n不是 EmberFrame 自己编写", "originalText": "Vulkan Loader\nC:\\Windows\\System32\\vulkan-1.dll\n系统运行时组件\n不是 EmberFrame 自己编写",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#ffffff", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 203003,
+      "version": 1, "versionNonce": 203004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "layer_shape", "x": 820, "y": 600, "width": 300, "height": 125,
+      "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 204001,
+      "version": 1, "versionNonce": 204002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "layer_text", "x": 855, "y": 626, "width": 230, "height": 75,
+      "text": "可选：Validation Layer\n检查 API 使用\n通常继续转发调用", "originalText": "可选：Validation Layer\n检查 API 使用\n通常继续转发调用",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 204003,
+      "version": 1, "versionNonce": 204004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "driver_shape", "x": 1210, "y": 610, "width": 270, "height": 105,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 205001,
+      "version": 1, "versionNonce": 205002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "driver_text", "x": 1242, "y": 634, "width": 206, "height": 58,
+      "text": "GPU 厂商 Vulkan ICD\nNVIDIA / AMD / Intel", "originalText": "GPU 厂商 Vulkan ICD\nNVIDIA / AMD / Intel",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 205003,
+      "version": 1, "versionNonce": 205004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "gpu_shape", "x": 1550, "y": 615, "width": 180, "height": 95,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 206001,
+      "version": 1, "versionNonce": 206002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "gpu_text", "x": 1593, "y": 644, "width": 95, "height": 38,
+      "text": "GPU", "originalText": "GPU", "fontSize": 25, "fontFamily": 3, "textAlign": "center",
+      "verticalAlign": "middle", "strokeColor": "#374151", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "angle": 0, "seed": 206003, "version": 1, "versionNonce": 206004, "isDeleted": false,
+      "groupIds": [], "boundElements": null, "link": null, "locked": false, "containerId": null,
+      "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "app_to_loader", "x": 300, "y": 662, "width": 90, "height": 0,
+      "strokeColor": "#c2410c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 207001,
+      "version": 1, "versionNonce": 207002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[90,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "loader_to_layer", "x": 720, "y": 662, "width": 100, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 207003,
+      "version": 1, "versionNonce": 207004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[100,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "layer_to_driver", "x": 1120, "y": 662, "width": 90, "height": 0,
+      "strokeColor": "#b45309", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 207005,
+      "version": 1, "versionNonce": 207006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[90,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "driver_to_gpu", "x": 1480, "y": 662, "width": 70, "height": 0,
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 207007,
+      "version": 1, "versionNonce": 207008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[70,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "loader_bypass_layer", "x": 720, "y": 730, "width": 490, "height": 65,
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 208001,
+      "version": 1, "versionNonce": 208002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[245,65],[490,0]], "startBinding": null,
+      "endBinding": null, "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "bypass_label", "x": 810, "y": 790, "width": 320, "height": 28,
+      "text": "未启用 Layer：Loader 直接分发给驱动", "originalText": "未启用 Layer：Loader 直接分发给驱动",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 208003,
+      "version": 1, "versionNonce": 208004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "gpu_work_note", "x": 1450, "y": 742, "width": 300, "height": 50,
+      "text": "后续 vkQueueSubmit 时\n才真正提交 GPU 工作", "originalText": "后续 vkQueueSubmit 时\n才真正提交 GPU 工作",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 208005,
+      "version": 1, "versionNonce": 208006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "layer_file_to_runtime_layer", "x": 1380, "y": 450, "width": -330, "height": 150,
+      "strokeColor": "#b45309", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 209001,
+      "version": 1, "versionNonce": 209002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[-80,75],[-330,150]], "startBinding": null,
+      "endBinding": null, "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "layer_load_label", "x": 1160, "y": 510, "width": 300, "height": 50,
+      "text": "Loader 根据 Layer manifest\n加载这份 DLL", "originalText": "Loader 根据 Layer manifest\n加载这份 DLL",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 209003,
+      "version": 1, "versionNonce": 209004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "create_instance_code", "x": 50, "y": 755, "width": 625, "height": 90,
+      "strokeColor": "#1e293b", "backgroundColor": "#1e293b", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 210001,
+      "version": 1, "versionNonce": 210002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "create_instance_code_text", "x": 78, "y": 772, "width": 570, "height": 58,
+      "text": "vkCreateInstance(&create_info, nullptr, &instance_);\ncreate_info 中声明要启用的 Extension 和 Layer", "originalText": "vkCreateInstance(&create_info, nullptr, &instance_);\ncreate_info 中声明要启用的 Extension 和 Layer",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "left", "verticalAlign": "middle",
+      "strokeColor": "#ffffff", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 210003,
+      "version": 1, "versionNonce": 210004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "divider_runtime_objects", "x": 50, "y": 870, "width": 1680, "height": 0,
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 211001,
+      "version": 1, "versionNonce": 211002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[1680,0]]
+    },
+    {
+      "type": "text", "id": "objects_title", "x": 50, "y": 905, "width": 560, "height": 30,
+      "text": "③ vkCreateInstance 返回后：B4 创建两条并列分支", "originalText": "③ vkCreateInstance 返回后：B4 创建两条并列分支",
+      "fontSize": 22, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 301001,
+      "version": 1, "versionNonce": 301002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "instance_result_shape", "x": 360, "y": 985, "width": 300, "height": 130,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 302001,
+      "version": 1, "versionNonce": 302002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "instance_result_text", "x": 405, "y": 1015, "width": 210, "height": 70,
+      "text": "VkInstance\nLoader 建好的系统级连接", "originalText": "VkInstance\nLoader 建好的系统级连接",
+      "fontSize": 19, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#ffffff", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 302003,
+      "version": 1, "versionNonce": 302004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "window_runtime_shape", "x": 65, "y": 1085, "width": 240, "height": 95,
+      "strokeColor": "#c2410c", "backgroundColor": "#fed7aa", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 303001,
+      "version": 1, "versionNonce": 303002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "window_runtime_text", "x": 105, "y": 1110, "width": 160, "height": 50,
+      "text": "B3 已有\nSDL_Window", "originalText": "B3 已有\nSDL_Window",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 303003,
+      "version": 1, "versionNonce": 303004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "messenger_result_shape", "x": 825, "y": 945, "width": 355, "height": 110,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 304001,
+      "version": 1, "versionNonce": 304002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "messenger_result_text", "x": 855, "y": 970, "width": 295, "height": 60,
+      "text": "vkCreateDebugUtilsMessengerEXT\n→ Debug Messenger → debug_callback", "originalText": "vkCreateDebugUtilsMessengerEXT\n→ Debug Messenger → debug_callback",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 304003,
+      "version": 1, "versionNonce": 304004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "surface_result_shape", "x": 825, "y": 1095, "width": 355, "height": 110,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 305001,
+      "version": 1, "versionNonce": 305002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "surface_result_text", "x": 855, "y": 1120, "width": 295, "height": 60,
+      "text": "SDL_Vulkan_CreateSurface\n(Window + Instance) → VkSurfaceKHR", "originalText": "SDL_Vulkan_CreateSurface\n(Window + Instance) → VkSurfaceKHR",
+      "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 305003,
+      "version": 1, "versionNonce": 305004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "log_shape", "x": 1360, "y": 950, "width": 300, "height": 100,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 306001,
+      "version": 1, "versionNonce": 306002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "log_text", "x": 1400, "y": 977, "width": 220, "height": 50,
+      "text": "终端中的 Validation 消息\n来自回调输出", "originalText": "终端中的 Validation 消息\n来自回调输出",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 306003,
+      "version": 1, "versionNonce": 306004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "future_shape", "x": 1310, "y": 1095, "width": 400, "height": 110,
+      "strokeColor": "#1e40af", "backgroundColor": "#dbeafe", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 307001,
+      "version": 1, "versionNonce": 307002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "future_text", "x": 1342, "y": 1116, "width": 336, "height": 70,
+      "text": "B5：检查 Queue 能否向 Surface Present\nB6：用 Surface 创建 Swapchain\n以后：vkQueuePresentKHR 显示图像", "originalText": "B5：检查 Queue 能否向 Surface Present\nB6：用 Surface 创建 Swapchain\n以后：vkQueuePresentKHR 显示图像",
+      "fontSize": 15, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle",
+      "strokeColor": "#374151", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 307003,
+      "version": 1, "versionNonce": 307004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "code_to_instance", "x": 360, "y": 845, "width": 140, "height": 140,
+      "strokeColor": "#1e293b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308001,
+      "version": 1, "versionNonce": 308002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[140,140]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "instance_to_messenger_result", "x": 660, "y": 1020, "width": 165, "height": -20,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308003,
+      "version": 1, "versionNonce": 308004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[165,-20]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "instance_to_surface_result", "x": 660, "y": 1090, "width": 165, "height": 60,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308005,
+      "version": 1, "versionNonce": 308006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[165,60]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "window_to_surface_result", "x": 305, "y": 1132, "width": 520, "height": 18,
+      "strokeColor": "#c2410c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308007,
+      "version": 1, "versionNonce": 308008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[520,18]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "messenger_to_log", "x": 1180, "y": 1000, "width": 180, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308009,
+      "version": 1, "versionNonce": 308010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[180,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "arrow", "id": "surface_to_future", "x": 1180, "y": 1150, "width": 130, "height": 0,
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 308011,
+      "version": 1, "versionNonce": 308012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[130,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "surface_key_note", "x": 820, "y": 1240, "width": 880, "height": 55,
+      "text": "绘制路径：Command Buffer → Queue → Driver → GPU\n呈现路径：Surface → Present 支持查询 → Swapchain → vkQueuePresentKHR",
+      "originalText": "绘制路径：Command Buffer → Queue → Driver → GPU\n呈现路径：Surface → Present 支持查询 → Swapchain → vkQueuePresentKHR",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#b45309", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 309001,
+      "version": 1, "versionNonce": 309002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    }
+  ],
+  "appState": {"viewBackgroundColor": "#ffffff", "gridSize": 20},
+  "files": {}
+}

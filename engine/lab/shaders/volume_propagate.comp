@@ -1,0 +1,27 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+void main() {
+    ivec3 cell=ivec3(gl_GlobalInvocationID.xyz); if(!insideCell(cell)) return;
+    SH next=zeroSH();
+    float transmission=1-imageLoad(sourceVolume,cell).a;
+    if(transmission>0) for(int d=0;d<6;++d) {
+        ivec3 src=cell-neighbors[d]; if(!insideCell(src)) continue;
+        SH previous=fields[pc.pass.x+cellIndex(src)];
+        vec3 power=max(vec3(previous.r.x,previous.g.x,previous.b.x)/Y00,vec3(0));
+        vec3 normalization=vec3(0);
+        for(int k=0;k<6;++k) normalization+=max(evaluateSH(previous,shBasis(vec3(neighbors[k]))),vec3(0));
+        // 截断 SH 的负瓣归零后，以原 l=0 通量归一化，保证每步至多 attenuation 的通量。
+        // 越界/被墙吸收的份额不重新分配；累计场不作为新的 frontier，避免反复放大。
+        vec3 incoming=max(evaluateSH(previous,shBasis(vec3(neighbors[d]))),vec3(0));
+        incoming*=power*v.transport.x*transmission/max(normalization,vec3(1e-20));
+        // 有限立体角的邻格传输采用余弦瓣，不能把整份通量当作方向 delta。
+        // 后者的一阶 SH 负瓣过强，会抵消同格其它方向的正照度并形成暗孔。
+        vec4 transferBasis=shBasis(vec3(neighbors[d]));transferBasis.yzw*=2./3.;
+        next=addSH(next,projectSH(incoming,transferBasis));
+    }
+    int index=cellIndex(cell);
+    fields[pc.pass.y+index]=next;
+    fields[2*cellCount()+index]=addSH(fields[2*cellCount()+index],next);
+}

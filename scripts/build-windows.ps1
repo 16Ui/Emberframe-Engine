@@ -1,3 +1,4 @@
+
 param(
     [ValidateSet("Debug", "Release")]
     [string]$Config = "Release",
@@ -6,7 +7,9 @@ param(
 
     [string]$VulkanSdk = $env:VULKAN_SDK,
 
-    [switch]$BuildShaders
+    [switch]$BuildShaders,
+
+    [switch]$Run
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +48,7 @@ if (-not (Test-Path -LiteralPath $headerPath) -or
 
 $env:VULKAN_SDK = $sdkPath
 $env:Path = "$(Join-Path $sdkPath 'Bin');$env:Path"
+$env:VK_LAYER_PATH = Join-Path $sdkPath "Bin"
 
 Push-Location $repoRoot
 try {
@@ -58,6 +62,15 @@ try {
 
     cmake --build --preset windows-release-chapter6 --config $Config --target $BuildTargets --parallel
     if ($LASTEXITCODE -ne 0) { throw "Build failed." }
+
+    if ($Run) {
+        $executablePath = Join-Path $repoRoot "bin\$Config\$Target.exe"
+        if (-not (Test-Path -LiteralPath $executablePath)) {
+            throw "Built executable was not found: $executablePath"
+        }
+        & $executablePath
+        if ($LASTEXITCODE -ne 0) { throw "Executable failed with exit code $LASTEXITCODE." }
+    }
 }
 finally {
     Pop-Location

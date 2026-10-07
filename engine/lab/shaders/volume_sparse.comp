@@ -1,0 +1,24 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+void main() {
+    ivec3 cell=ivec3(gl_GlobalInvocationID.xyz);
+    int level=pc.pass.w;
+    // 最小 mip 只有 1/2 格：工作组边缘线程必须在读取图像/页表前退出。
+    if(level<0||level>=v.modes.z||level>=6||any(greaterThanEqual(cell,ivec3(pc.pass.z)))) return;
+    uint page=sparsePageIndex(cell,level);
+    if(page>=min(v.random.w,uint(sparsePages.length()))) return;
+    sparsePages[page]=0u;
+    vec4 value=imageLoad(sourceVolume,cell);
+    // 无 epsilon 剪枝：保留所有非零光学 opacity，包括粗 mip 的薄面覆盖。
+    if(value.a==0.0&&all(equal(value.rgb,vec3(0)))) return;
+    uint node=atomicAdd(sparseCounts.x,1u);
+    uint capacity=min(v.random.z,uint(sparseNodes.length()));
+    if(node>=capacity) { atomicAdd(sparseCounts.y,1u); return; }
+    sparseNodes[node]=value;
+    sparsePages[page]=node+1u;
+    atomicAdd(sparseCounts.z,1u);
+    atomicAdd(sparseLevelCounts[level/4][level%4],1u);
+    // 发布屏障在 dispatch 之间由 host 的 synchronization2 buffer barrier 完成。
+}

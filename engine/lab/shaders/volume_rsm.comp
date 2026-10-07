@@ -1,0 +1,47 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=64,local_size_y=1,local_size_z=1) in;
+// 像素四角 light ray 与当前表面的切平面相交，求 world surface area。
+// 不用任意的 resolution^2 系数伪装面积。掠射/投影极点无稳定足迹时丢弃样本。
+bool cornerOnPlane(vec2 uv,vec3 p,vec3 n,int face,out vec3 result) {
+    vec2 ndc=uv*2-1; if(v.modes.w<0) ndc.y=-ndc.y;
+    vec4 a=v.inverseLightFaces[face]*vec4(ndc,0,1),b=v.inverseLightFaces[face]*vec4(ndc,1,1);
+    if(abs(a.w)<1e-8||abs(b.w)<1e-8) return false;
+    vec3 origin=a.xyz/a.w,delta=b.xyz/b.w-origin;
+    float denominator=dot(n,delta);
+    if(abs(denominator)<1e-6*length(delta)) return false;
+    float t=dot(n,p-origin)/denominator;
+    if(t<0||t>1) return false;
+    result=origin+t*delta; return !any(isnan(result))&&!any(isinf(result));
+}
+void main() {
+    uint index=gl_GlobalInvocationID.x;
+    int perFace=v.rsmDimensions.z*v.rsmDimensions.w,count=rsmPacketCount();
+    if(index>=uint(count)) return;
+    packets[index]=RsmPacket(vec4(0),vec4(0),vec4(0));
+    int face=int(index)/perFace,localIndex=int(index)%perFace;
+    ivec2 stratum=ivec2(localIndex%v.rsmDimensions.z,localIndex/v.rsmDimensions.z);
+    ivec2 first=(stratum*v.geometry.zw)/v.rsmDimensions.zw;
+    ivec2 end=((stratum+1)*v.geometry.zw)/v.rsmDimensions.zw;
+    ivec2 span=end-first;
+    uint h=hashVolume(index^v.random.x);
+    ivec2 localPixel=first+ivec2(int(h%uint(span.x)),int(hashVolume(h)%uint(span.y)));
+    ivec2 pixel=localPixel+ivec2(face*v.geometry.z,0);
+    vec4 pos=texelFetch(rsmPosition,pixel,0);
+    if(pos.a<=0) return;
+    vec3 n=unitVector(texelFetch(rsmNormal,pixel,0).xyz);
+    vec3 irradiance=incidentIrradiance(pos.xyz,n);
+    if(max(irradiance.r,max(irradiance.g,irradiance.b))<=0) return;
+    vec2 uv0=vec2(localPixel)/vec2(v.geometry.zw),uv1=vec2(localPixel+1)/vec2(v.geometry.zw);
+    vec3 a,b,c,d;
+    if(!cornerOnPlane(uv0,pos.xyz,n,face,a)||!cornerOnPlane(vec2(uv1.x,uv0.y),pos.xyz,n,face,b)
+       ||!cornerOnPlane(uv1,pos.xyz,n,face,c)||!cornerOnPlane(vec2(uv0.x,uv1.y),pos.xyz,n,face,d)) return;
+    float area=.5*(length(cross(b-a,c-a))+length(cross(c-a,d-a)));
+    if(isnan(area)||isinf(area)||area<=0) return;
+    // reflected power Φ=E*rho*A。VPL emission /pi 与 receiver /pi 只在 gather 使用。
+    // 分层抽样乘该层真实像素数，而非再对结果取 average，避免 resolution 改变能量。
+    float weight=float(span.x*span.y);
+    vec3 flux=irradiance*diffuseAlbedo(texelFetch(rsmAlbedo,pixel,0))*area*weight;
+    packets[index]=RsmPacket(vec4(pos.xyz,area*weight),vec4(n,1),vec4(flux,0));
+}

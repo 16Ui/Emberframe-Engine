@@ -1,0 +1,94 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=8,local_size_y=8,local_size_z=1) in;
+vec3 gatherRsm(vec3 p,vec3 n) {
+    vec3 sum=vec3(0);
+    for(int i=0;i<rsmPacketCount();++i) {
+        RsmPacket packet=packets[i]; if(packet.normalValid.w<=0) continue;
+        vec3 delta=packet.positionArea.xyz-p; float d2=dot(delta,delta);
+        if(d2<v.transport.y*v.transport.y) continue;
+        vec3 l=delta*inversesqrt(d2);
+        float cosine=max(dot(n,l),0.0)*max(dot(packet.normalValid.xyz,-l),0.0);
+        sum+=packet.flux.rgb*(cosine/(d2*VPI*VPI));
+    }
+    // 源 rho 已在 flux，接收 rho 由 main 最后乘一次。经典 RSM 无第二段 visibility。
+    return sum;
+}
+vec3 sampleLpv(vec3 p,vec3 n) {
+    p+=n*(1.5*v.boundsMinCell.w); if(!insideWorld(p)) return vec3(0);
+    vec3 grid=(p-v.boundsMinCell.xyz)/v.boundsMinCell.w-.5;
+    ivec3 base=ivec3(floor(grid)); vec3 f=fract(grid),sum=vec3(0);
+    vec4 basis=shBasis(-n); basis.x*=VPI; basis.yzw*=2*VPI/3;
+    for(int z=0;z<2;++z) for(int y=0;y<2;++y) for(int x=0;x<2;++x) {
+        ivec3 o=ivec3(x,y,z),cell=clamp(base+o,ivec3(0),ivec3(v.dimensions.z-1));
+        vec3 w=mix(1-f,f,vec3(o));
+        // 低阶 SH 的负照度是截断误差，先在每格重建后钳制，再插值非负照度；
+        // 不让某个格的非物理负值把其它格的有效照度抵消成网格状黑洞。
+        sum+=max(evaluateSH(fields[2*cellCount()+cellIndex(cell)],basis),vec3(0))*(w.x*w.y*w.z);
+    }
+    return max(sum,vec3(0))/(v.boundsMinCell.w*v.boundsMinCell.w*VPI);
+}
+vec4 volumeCell(ivec3 cell,int level) {
+    if(v.random.y==0u) return texelFetch(radianceVolume,cell,level);
+    uint page=sparsePageIndex(cell,level);
+    if(page>=min(v.random.w,uint(sparsePages.length()))) return vec4(0);
+    uint entry=sparsePages[page];
+    if(entry==0u||entry>min(v.random.z,uint(sparseNodes.length()))) return vec4(0);
+    return sparseNodes[entry-1u];
+}
+// rgba32f 不假设支持线性滤波：两条查询路径共用完全相同的三线性/LOD 权重。
+vec4 volumeLevel(vec3 uv,int level) {
+    // 稀疏路径的格尺寸来自 UBO；cone tracing 不读取稠密 mip 的 texel 或尺寸。
+    ivec3 size=ivec3(v.dimensions.z>>level);
+    vec3 grid=uv*vec3(size)-.5,f=fract(grid); ivec3 base=ivec3(floor(grid));
+    vec4 value=vec4(0);
+    for(int z=0;z<2;++z) for(int y=0;y<2;++y) for(int x=0;x<2;++x) {
+        ivec3 o=ivec3(x,y,z); vec3 w=mix(1-f,f,vec3(o));
+        value+=volumeCell(clamp(base+o,ivec3(0),size-1),level)*(w.x*w.y*w.z);
+    }
+    return value;
+}
+vec4 volumeSample(vec3 p,float lod) {
+    vec3 uv=(p-v.boundsMinCell.xyz)/v.boundsMaxSide.w;
+    lod=clamp(lod,0,float(v.modes.z-1)); int a=int(floor(lod)),b=min(a+1,v.modes.z-1);
+    return mix(volumeLevel(uv,a),volumeLevel(uv,b),fract(lod));
+}
+vec3 coneTrace(vec3 origin,vec3 direction) {
+    vec3 color=vec3(0); float opacity=0,t=v.boundsMinCell.w;
+    // 30 度 half-angle, <=96 steps, 最大距离为场景立方体对角线。
+    for(int i=0;i<96&&opacity<.995&&t<v.boundsMaxSide.w*1.733;++i) {
+        vec3 p=origin+direction*t; if(!insideWorld(p)) break;
+        float diameter=max(v.boundsMinCell.w,2*t*.577350269);
+        float lod=log2(diameter/v.boundsMinCell.w);
+        vec4 sampleValue=volumeSample(p,lod);
+        color+=(1-opacity)*sampleValue.rgb;
+        opacity+=(1-opacity)*clamp(sampleValue.a,0,1);
+        t+=diameter;
+    }
+    return color;
+}
+vec3 gatherCones(vec3 p,vec3 n) {
+    vec3 tangent=unitVector(cross(abs(n.y)<.95?vec3(0,1,0):vec3(1,0,0),n));
+    vec3 bitangent=cross(n,tangent),color=vec3(0);
+    vec3 origin=p+n*(1.5*v.boundsMinCell.w);
+    // 六个等权 cosine-distributed 方向，Lambert 的 pi 与 cosine pdf 抵消。
+    for(int i=0;i<6;++i) {
+        float u=(float(i)+.5)/6,phi=2*VPI*fract(float(i)*.61803398875);
+        vec3 direction=unitVector(tangent*(sqrt(u)*cos(phi))+bitangent*(sqrt(u)*sin(phi))+n*sqrt(1-u));
+        color+=coneTrace(origin,direction);
+    }
+    return color/6;
+}
+void main() {
+    ivec2 pixel=ivec2(gl_GlobalInvocationID.xy); if(any(greaterThanEqual(pixel,v.dimensions.xy))) return;
+    vec4 pos=texelFetch(mainPosition,pixel,0); vec3 color=vec3(0);
+    if(pos.a>0) {
+        vec3 n=unitVector(texelFetch(mainNormal,pixel,0).xyz);
+        if(v.modes.x==3) color=gatherRsm(pos.xyz,n);
+        else if(v.modes.x==4) color=sampleLpv(pos.xyz,n);
+        else if(v.modes.x==5) color=gatherCones(pos.xyz,n);
+        color*=diffuseAlbedo(texelFetch(mainAlbedo,pixel,0));
+    }
+    imageStore(indirectOutput,pixel,vec4(max(color,vec3(0)),1));
+}

@@ -1,0 +1,12 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec3 color=vec3(0);
+    if(ep.control.x==6)color=vec3(efFetch(efOcclusion,p).r);
+    if(ep.control.x==8)color=efClean(efFetch(efSource,p).rgb);
+    if(ep.control.x==9)color=vec3(.5+efFetch(efSource,p).xy*8,0.5);
+    if(ep.control.x==10)color=vec3(max(efFetch(efSource,p).r,0));
+    imageStore(efOut,p,vec4(color,1));
+}

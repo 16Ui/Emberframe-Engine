@@ -1,0 +1,19 @@
+#version 450
+layout(local_size_x=8,local_size_y=8) in;
+layout(set=0,binding=0) uniform sampler2D sourceDepth;
+layout(rgba32f,set=0,binding=1) uniform writeonly image2D targetMoments;
+layout(push_constant) uniform Projection { vec4 area; } projection;
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(p,imageSize(targetMoments)))) return;
+    // 复用真实光源深度：空背景 clear=1 对应四阶矩全部为 1。
+    float z=texelFetch(sourceDepth,p,0).r;
+    // 透视 Z 非线性：先还原光源视空间距离再生成矩，不能对投影 Z 直接求遮挡者距离。
+    if(projection.area.x>0) {
+        float nearZ=projection.area.x,farZ=projection.area.y;
+        float distance=nearZ*farZ/max(farZ-z*(farZ-nearZ),1e-8);
+        z=clamp((distance-nearZ)/(farZ-nearZ),0,1);
+    }
+    float z2=z*z;
+    imageStore(targetMoments,p,vec4(z,z2,z2*z,z2*z2));
+}

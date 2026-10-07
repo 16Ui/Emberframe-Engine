@@ -1,0 +1,30 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);ivec2 size=imageSize(efOut);if(!efInside(p,size))return;
+    vec2 uv=(vec2(p)+.5)/vec2(size);vec3 result=vec3(0);
+    if(ep.control.x==2) {
+        result=efClean(efFetch(efSource,p).rgb)+efBilinear(efAux,uv).rgb*ef.temporal.w;
+    } else if(ep.control.x==1) {
+        // Tent upscale，aux 是本层 downsample，source 是更低分辨率的重建结果。
+        vec2 texel=1./vec2(textureSize(efSource,0));float weights=0;
+        for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) {
+            float w=float((x==0 ? 2:1)*(y==0 ? 2:1));result+=efBilinear(efSource,uv+vec2(x,y)*texel).rgb*w;weights+=w;
+        }
+        result=efBilinear(efAux,uv).rgb*.5+result*(.5/weights);
+    } else {
+        vec2 texel=1./vec2(textureSize(efSource,0));float weights=0;
+        for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) {
+            float w=float((x==0 ? 2:1)*(y==0 ? 2:1));vec3 c=efClean(efBilinear(efSource,uv+vec2(x,y)*texel).rgb);
+            if(ep.control.y!=0) {
+                float brightness=max(c.r,max(c.g,c.b)),knee=max(ef.temporal.z*.5,.001);
+                float soft=clamp(brightness-ef.temporal.z+knee,0,2*knee);soft=soft*soft/(4*knee);
+                c*=max(brightness-ef.temporal.z,soft)/max(brightness,.0001);
+            }
+            result+=c*w;weights+=w;
+        }
+        result/=weights;
+    }
+    imageStore(efOut,p,vec4(efClean(result),1));
+}

@@ -1,9 +1,11 @@
-﻿# CMakeList.txt : CMake project for vulkan_guide, include source and define
+# CMakeList.txt : CMake project for vulkan_guide, include source and define
 # project specific logic here.
 #
 cmake_minimum_required (VERSION 3.8)
 
 project ("vulkan_guide")
+
+enable_testing()
 
 
 find_package(Vulkan REQUIRED)
@@ -20,6 +22,7 @@ endif()
 
 add_subdirectory(shared)
 add_subdirectory(engine)
+add_subdirectory(launcher)
 add_subdirectory(samples)
 
 add_subdirectory(chapter-0)
@@ -51,6 +54,6 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
 endforeach(GLSL)
 
 add_custom_target(
-    Shaders 
+    Shaders
     DEPENDS ${SPIRV_BINARY_FILES}
     )

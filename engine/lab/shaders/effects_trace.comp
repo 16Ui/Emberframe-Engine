@@ -1,0 +1,149 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "effects_common.glsl"
+// 每个像素/帧独立扰动两个采样维度，而不是只旋转一组固定半径的采样圈。
+// 径向采用分层抖动 + 随机平移；方位角采用按位扰乱的 Van der Corput 序列。
+vec2 traceSample2D(ivec2 pixel,int index,int count,uint stream) {
+    uint frame=efHash(uint(ef.dimensions.z)^stream);
+    uint scramble=efHash(uint(pixel.x)*1973u^uint(pixel.y)*9277u^uint(ef.dimensions.w)^frame);
+    float within=efRandom(pixel,frame^efHash(uint(index)+0x68bc21ebu));
+    float shift=efRandom(pixel,frame^0x02e5be93u);
+    return vec2(fract((float(index)+within)/float(count)+shift),efRadical(uint(index)^scramble));
+}
+
+// 只对命中颜色做亚像素插值，不能双线性混合深度/位置后假造一个几何交点。
+// 同时检查对象、材质和局部几何，避免前景边缘吸入背景的明亮颜色。
+vec3 traceRadiance(vec2 uv,ivec2 hit) {
+    vec2 samplePixel=uv*vec2(textureSize(efSource,0))-.5,f=fract(samplePixel);
+    ivec2 base=ivec2(floor(samplePixel));
+    vec3 center=efFetch(efPosition,hit).xyz;
+    vec3 normal=efUnit(efFetch(efNormal,hit).xyz,vec3(0,0,1));
+    float depth=max(efDepth(center),.001),planeTolerance=max(.01,depth*2./float(ef.dimensions.y));
+    vec3 sum=vec3(0);float weights=0;
+    for(int y=0;y<2;y++)for(int x=0;x<2;x++) {
+        ivec2 q=base+ivec2(x,y);if(!efInside(q,ef.dimensions.xy))continue;
+        vec4 world=efFetch(efPosition,q);if(world.w<.5)continue;
+        if(ef.extensions.y!=0&&any(greaterThan(abs(efFetch(efMeta,hit).xy-efFetch(efMeta,q).xy),vec2(.1))))continue;
+        if(dot(normal,efUnit(efFetch(efNormal,q).xyz,normal))<.5)continue;
+        vec3 delta=world.xyz-center;
+        if(abs(dot(delta,normal))>planeTolerance*3||abs(efDepth(world.xyz)-depth)>max(.05,depth*.05))continue;
+        float w=(x==0 ? 1-f.x:f.x)*(y==0 ? 1-f.y:f.y);
+        sum+=efClean(efFetch(efSource,q).rgb)*w;weights+=w;
+    }
+    return weights>1e-6 ? sum/weights:efClean(efFetch(efSource,hit).rgb);
+}
+
+// 世界空间步进 + 视空间厚度测试；只见屏幕第一层，未命中保留环境 fallback。
+// phase 改变各条射线的步进落点，避免所有像素在同一距离同时越过粗步进层。
+bool traceScreen(ivec2 receiver,vec3 origin,vec3 direction,float phase,out ivec2 hit,out vec2 hitUV,out float confidence) {
+    float maxDistance=min(ef.skyTopFar.w*.35,max(2.,ef.skyBottomRadius.w*16));
+    float depth=max(efDepth(origin),ef.cameraNear.w),bias=max(.003,depth*.002);
+    float previous=0;bool previousInFront=true;confidence=0;hit=ivec2(0);hitUV=vec2(0);
+    if(maxDistance<=bias)return false;
+    int steps=clamp(ef.modes.z*4,24,96);
+    for(int i=1;i<=steps;i++) {
+        // 最后一步仍覆盖完整查询范围；其余步进在各自分层内随机偏移。
+        float u=i==steps ? 1.:(float(i)-phase)/float(steps);
+        float distanceAlong=bias+(maxDistance-bias)*u*u;
+        vec3 point=origin+direction*distanceAlong;vec2 uv;
+        if(!efProject(point,ef.currentVP,uv))return false;
+        ivec2 q=ivec2(uv*vec2(ef.dimensions.xy));vec4 surface=efFetch(efPosition,q);
+        float sceneDepth=efDepth(surface.xyz),rayDepth=efDepth(point),delta=rayDepth-sceneDepth;
+        bool crossing=previousInFront&&surface.w>.5&&delta>=0;
+        float lo=previous,hi=distanceAlong;
+        previous=distanceAlong;previousInFront=surface.w<.5||delta<0;
+        // 粗步进可以完全跨过 thickness；先找前->后的区间，细化之后才检验厚度。
+        if(crossing) {
+            for(int refine=0;refine<8;refine++) {
+                float mid=(lo+hi)*.5;vec2 middleUV;
+                if(!efProject(origin+direction*mid,ef.currentVP,middleUV))break;
+                ivec2 middlePixel=ivec2(middleUV*vec2(ef.dimensions.xy));vec4 wp=efFetch(efPosition,middlePixel);
+                if(wp.w>.5&&efDepth(origin+direction*mid)>=efDepth(wp.xyz))hi=mid;else lo=mid;
+            }
+            vec2 refinedUV;if(!efProject(origin+direction*hi,ef.currentVP,refinedUV))return false;
+            hit=ivec2(refinedUV*vec2(ef.dimensions.xy));vec4 finalSurface=efFetch(efPosition,hit);
+            float finalDelta=efDepth(origin+direction*hi)-efDepth(finalSurface.xyz);
+            float thickness=max(.025,efDepth(finalSurface.xyz)*.015);
+            float separation=length(finalSurface.xyz-origin);
+            if(finalSurface.w<.5||finalDelta<0||finalDelta>thickness*2||hi<=bias*4||separation<=bias*4||all(equal(hit,receiver)))continue;
+            vec3 hitNormal=efUnit(efFetch(efNormal,hit).xyz,vec3(0,0,1));
+            float facing=dot(hitNormal,-direction);if(facing<=0)continue;
+            vec2 edge=min(refinedUV,1-refinedUV);
+            // 必须使用二分后的连续距离 hi，不能再用粗步进的 u：否则同一
+            // 平面上的反射强度会按粗步进区间分档，形成稳定的明暗条带。
+            float distanceConfidence=1-clamp((hi-bias)/(maxDistance-bias),0,1);
+            float thicknessConfidence=1-smoothstep(thickness*.5,thickness*2,max(finalDelta,0));
+            float selfConfidence=smoothstep(bias*4,bias*8,min(hi,separation));
+            confidence=smoothstep(0,1,min(edge.x,edge.y)*12)*distanceConfidence*
+                thicknessConfidence*selfConfidence*smoothstep(0,.15,facing);
+            hitUV=refinedUV;
+            return confidence>.001;
+        }
+    }
+    return false;
+}
+
+// GGX 可见法线重要性采样（VNDF）：粗糙度控制反射瓣，不再把样本固定在
+// 若干经验圆环上。对应权重为 Fresnel * G2/G1(V)，不是再乘一次 N·L。
+vec3 traceVisibleGgxNormal(vec3 view,float alpha,vec2 xi) {
+    vec3 stretched=efUnit(vec3(alpha*view.xy,view.z),vec3(0,0,1));
+    float lensq=dot(stretched.xy,stretched.xy);
+    vec3 tangent=lensq>1e-10 ? vec3(-stretched.y,stretched.x,0)*inversesqrt(lensq):vec3(1,0,0);
+    vec3 bitangent=cross(stretched,tangent);
+    float radius=sqrt(xi.x),phi=2*EF_PI*xi.y;
+    float diskX=radius*cos(phi),diskY=radius*sin(phi),blend=.5*(1+stretched.z);
+    diskY=(1-blend)*sqrt(max(1-diskX*diskX,0))+blend*diskY;
+    vec3 h=tangent*diskX+bitangent*diskY+stretched*sqrt(max(1-diskX*diskX-diskY*diskY,0));
+    return efUnit(vec3(alpha*h.xy,max(h.z,0)),vec3(0,0,1));
+}
+
+float traceVisibleGgxWeight(float noV,float noL,float alpha) {
+    float a2=alpha*alpha;
+    float gv=sqrt(a2+(1-a2)*noV*noV),gl=sqrt(a2+(1-a2)*noL*noL);
+    // 高度相关 Smith G2 / G1(V)，已包含 BRDF*cos/pdf 的可见性比值。
+    return clamp(noL*(noV+gv)/max(noL*gv+noV*gl,1e-7),0,1);
+}
+
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);if(!efInside(p,imageSize(efOut)))return;
+    vec4 wp=efFetch(efPosition,p);vec3 contribution=vec3(0);float confidence=0;
+    if(wp.w>.5) {
+        vec4 nr=efFetch(efNormal,p),material=efFetch(efAlbedo,p);
+        vec3 n=efUnit(nr.xyz,vec3(0,0,1)),v=efUnit(ef.cameraNear.xyz-wp.xyz,n),origin=wp.xyz+n*max(.003,efDepth(wp.xyz)*.002);
+        vec3 f0=mix(vec3(.04),material.rgb,clamp(material.w,0,1));float rough=clamp(nr.w,.045,1);
+        if(ef.modes.y==1) {
+            mat3 basis=efFrame(n);vec3 localView=transpose(basis)*v;
+            float noV=dot(n,v),alpha=rough*rough;
+            int samples=clamp(ef.modes.z/4,1,8);float sumConfidence=0;
+            for(int i=0;i<samples&&noV>0;i++) {
+                vec2 xi=traceSample2D(p,i,samples,0x6c8e9cf5u);
+                vec3 h=efUnit(basis*traceVisibleGgxNormal(localView,alpha,xi),n);
+                vec3 d=reflect(-v,h);float noL=dot(n,d);
+                float phase=efRandom(p,efHash(uint(ef.dimensions.z))^efHash(uint(i)+0x51633e2du));
+                ivec2 hit;vec2 hitUV;float c;
+                if(noL<=0||!traceScreen(p,origin,d,phase,hit,hitUV,c))continue;
+                vec3 fresnel=f0+(1-f0)*pow(1-clamp(dot(v,h),0,1),5);
+                vec3 weight=fresnel*traceVisibleGgxWeight(noV,noL,alpha);
+                contribution+=traceRadiance(hitUV,hit)*weight*c;sumConfidence+=c;
+            }
+            contribution/=max(sumConfidence,1e-6);confidence=sumConfidence/float(samples);
+        } else {
+            mat3 basis=efFrame(n);
+            if(ef.extensions.x!=0) {
+                vec4 tangent=efFetch(efTangent,p);vec3 t=efUnit(tangent.xyz-n*dot(n,tangent.xyz),basis[0]);
+                basis=mat3(t,cross(n,t)*(tangent.w<0 ? -1:1),n);
+            }
+            int samples=clamp(ef.modes.z,4,32);float sumConfidence=0;
+            for(int i=0;i<samples;i++) {
+                vec2 xi=traceSample2D(p,i,samples,0x967a889bu);float u=xi.x,phi=2*EF_PI*xi.y;
+                vec3 d=basis*vec3(sqrt(u)*cos(phi),sqrt(u)*sin(phi),sqrt(1-u));
+                float phase=efRandom(p,efHash(uint(ef.dimensions.z))^efHash(uint(i)+0xa511e9b3u));
+                ivec2 hit;vec2 hitUV;float c;if(!traceScreen(p,origin,d,phase,hit,hitUV,c))continue;
+                // cosine hemisphere PDF；Lambert BRDF*cos/pdf = albedo*(1-metal)。
+                contribution+=traceRadiance(hitUV,hit)*material.rgb*(1-clamp(material.w,0,1))*c;sumConfidence+=c;
+            }
+            contribution/=max(sumConfidence,1e-6);confidence=sumConfidence/float(samples);
+        }
+    }
+    imageStore(efOut,p,vec4(efClean(contribution),clamp(confidence,0,1)));
+}

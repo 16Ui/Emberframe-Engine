@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x=64,local_size_y=1,local_size_z=1) in;
+struct LightData { vec4 positionRange,directionKind,colorIntensity; };
+layout(std140,set=0,binding=0) uniform Globals {
+    mat4 vp,view,projection,lightVP; vec4 cameraNear,skyTopFar,skyBottomExposure;
+    ivec4 dimensions,modes,options; vec4 post; ivec4 misc; LightData lights[64];
+} g;
+struct ObjectData {vec4 sphere;uvec4 indices;};
+layout(std430,set=0,binding=11) readonly buffer Objects {ObjectData objects[];};
+// Five 32-bit words exactly match VkDrawIndexedIndirectCommand, stride 20 bytes.
+layout(std430,set=0,binding=12) writeonly buffer Draws {uint commands[];};
+layout(push_constant) uniform DrawPush {mat4 unused;ivec4 ids;} control;
+void main() {
+    uint i=gl_GlobalInvocationID.x;if(i>=uint(control.ids.x))return;
+    bool shadow=gl_GlobalInvocationID.y!=0u;mat4 rows=transpose(shadow?g.lightVP:g.vp);
+    // Vulkan clip range: -w<=x,y<=w, 0<=z<=w. These same planes work for reverse-Z.
+    vec4 planes[6]=vec4[6](rows[3]+rows[0],rows[3]-rows[0],rows[3]+rows[1],rows[3]-rows[1],rows[2],rows[3]-rows[2]);
+    ObjectData object=objects[i];bool visible=true;
+    for(int p=0;p<6;p++)visible=visible&&(dot(planes[p],vec4(object.sphere.xyz,1))>=-object.sphere.w*length(planes[p].xyz));
+    uint index=(i+(shadow?uint(control.ids.x):0u))*5u;
+    commands[index]=object.indices.x;commands[index+1u]=visible?1u:0u;
+    commands[index+2u]=object.indices.y;commands[index+3u]=0u;commands[index+4u]=0u;
+}

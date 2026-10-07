@@ -15,7 +15,7 @@ int main(int argc, char* argv[])
     }
 
     // SDL_Window* 是 SDL 管理的窗口对象指针，不是自动释放的 C++ 对象。
-    // 创建成功后，本程序负责在退出前调用 SDL_DestroyWindow。
+    // 创建成功后，本程序负责在退在·出前调用 SDL_DestroyWindow。
     SDL_Window* window = SDL_CreateWindow(
         "EmberFrame - Lesson 01",
         SDL_WINDOWPOS_CENTERED,

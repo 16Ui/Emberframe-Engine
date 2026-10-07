@@ -1,0 +1,38 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+#include "volume_geometry.glsl"
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+void main() {
+    ivec3 cell=ivec3(gl_GlobalInvocationID.xyz); if(!insideCell(cell)) return;
+    vec3 center=v.boundsMinCell.xyz+(vec3(cell)+.5)*v.boundsMinCell.w;
+    vec3 radiance=vec3(0); uint count=0;
+    // BVH 先排除整棵不相交子树，再对叶中的完整三角形作精确 SAT。
+    // 仍是每格一个写者，不需要浮点原子；没有固定遍历栈或悄悄丢面。
+    float halfSize=v.boundsMinCell.w*(.5+1e-5);
+    uint nodeIndex=0u;
+    while(nodeIndex<uint(v.geometry.x)) {
+        GeometryNode node=geometryNodes[nodeIndex];
+        if(any(greaterThan(node.minimum.xyz,center+halfSize))||any(lessThan(node.maximum.xyz,center-halfSize))) {
+            nodeIndex=node.range.z;continue;
+        }
+        if(node.range.y==0u) {++nodeIndex;continue;}
+        for(uint i=node.range.x;i<node.range.x+node.range.y;++i) {
+        WorldTriangle t=triangles[i];
+        if(!triangleVoxel(t,center,v.boundsMinCell.w*.5)) continue;
+        ++count;
+        if(v.modes.x==5) { // GiMode::voxel
+            vec3 p=closestTriangle(center,t),n=unitVector(cross(t.b.xyz-t.a.xyz,t.c.xyz-t.a.xyz));
+            // CPU 准备 base material + 平均 vertex color，不烘焙体积。texture/alpha 不在此基础版。
+            // a.w 是 double-sided；只朝入射光一侧翻转，保持几何占据一致。
+            if(t.a.w>0) {
+                vec3 l=int(v.lightDirectionKind.w)==0?-unitVector(v.lightDirectionKind.xyz):unitVector(v.lightPositionRange.xyz-p);
+                if(dot(n,l)<0) n=-n;
+            }
+            radiance+=t.emissive.rgb+t.diffuse.rgb*incidentIrradiance(p,n)*rsmVisibility(p,n)/VPI;
+        }
+        }
+        nodeIndex=node.range.z;
+    }
+    imageStore(sourceVolume,cell,count==0u?vec4(0):vec4(radiance/float(count),1));
+}

@@ -1,0 +1,15 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+void main() {
+    ivec3 dst=ivec3(gl_GlobalInvocationID.xyz); if(any(greaterThanEqual(dst,ivec3(pc.pass.z)))) return;
+    vec4 sum=vec4(0);
+    for(int z=0;z<2;++z) for(int y=0;y<2;++y) for(int x=0;x<2;++x)
+        sum+=imageLoad(sourceVolume,dst*2+ivec3(x,y,z));
+    vec4 mean=sum*.125;
+    // 父格 step length 为两倍：alpha'=1-(1-alpha)^2。保持 premultiplied RGB。
+    // 各向同性 mips 无法保留薄墙的方向覆盖率；这是有界教学 VCT，不是生产 VXGI。
+    float opacity=1-(1-mean.a)*(1-mean.a);
+    imageStore(destinationMip,dst,vec4(mean.a>1e-8?mean.rgb*(opacity/mean.a):vec3(0),opacity));
+}

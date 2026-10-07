@@ -1,0 +1,23 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "gpu_shadow_sampling.glsl"
+layout(local_size_x=1) in;
+// 诊断只使用静态描述符和普通 SSBO，没有额外 feature。
+layout(std430,set=0,binding=0) buffer Check {
+    vec4 query[8]; // xyz=world position，w 未使用
+    vec4 result[8]; // visibility, sampled depth, first moment, second moment
+    vec4 moments[8]; // 全部四阶矩；i=7 查询 SAT，其余查询原始矩。
+    vec4 normal[8]; // xyz=解析三角形几何法线；新增在末尾，不改变旧读回字段偏移。
+} checkData;
+void main() {
+    int i=int(gl_GlobalInvocationID.x);
+    if(i>=8) return;
+    vec3 p=checkData.query[i].xyz;
+    vec3 l=vec3(0,0,-1),n=checkData.normal[i].xyz;
+    n=dot(n,n)>1e-12 ? normalize(n):l;
+    vec4 q=gpuShadows.lightVP[0]*vec4(p,1);
+    ivec2 tc=clamp(ivec2((q.xy/q.w*.5+.5)*float(gpuShadows.controls.w)),ivec2(0),ivec2(gpuShadows.controls.w-1));
+    vec4 m=gpu_shadow_moments(tc,i==7 ? 8:0);
+    checkData.result[i]=vec4(gpu_shadow_visibility(p,n,l),gpu_shadow_depth(0,tc),m.xy);
+    checkData.moments[i]=m;
+}

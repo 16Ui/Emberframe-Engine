@@ -1,0 +1,36 @@
+#version 450
+layout(local_size_x=1,local_size_y=1,local_size_z=1) in;
+struct LightData { vec4 positionRange,directionKind,colorIntensity; };
+layout(std140,set=0,binding=0) uniform Globals {
+    mat4 vp,view,projection,lightVP; vec4 cameraNear,skyTopFar,skyBottomExposure;
+    ivec4 dimensions,modes,options; vec4 post; ivec4 misc; LightData lights[64];
+} g;
+layout(std430,set=0,binding=3) buffer LightLists { uint lightLists[]; };
+void main() {
+    uvec3 cell=gl_GlobalInvocationID;
+    uint base=((cell.z*uint(g.dimensions.w)+cell.y)*uint(g.dimensions.z)+cell.x)*65u,count=0u;
+    vec2 lo=vec2(cell.xy*16u)/vec2(g.dimensions.xy)*2-1;
+    vec2 hi=min(vec2((cell.xy+1u)*16u),vec2(g.dimensions.xy))/vec2(g.dimensions.xy)*2-1;
+    // TAA 改变投影中心，tile 的视锥平面也必须扣掉同一 NDC 偏移。
+    lo+=vec2(g.projection[2][0],g.projection[2][1]);hi+=vec2(g.projection[2][0],g.projection[2][1]);
+    float z0=g.cameraNear.w,z1=g.skyTopFar.w;
+    if(g.modes.y==2) {
+        float ratio=z1/z0;
+        z1=z0*pow(ratio,float(cell.z+1u)/float(g.misc.y));
+        z0=z0*pow(ratio,float(cell.z)/float(g.misc.y));
+    }
+    // 视空间球与四个 tile 平面 + 对数 Z 区间相交。保守测试允许多收，不漏灯。
+    vec4 planes[4]=vec4[4](vec4(g.projection[0][0],0,lo.x,0),vec4(-g.projection[0][0],0,-hi.x,0),
+                           vec4(0,g.projection[1][1],lo.y,0),vec4(0,-g.projection[1][1],-hi.y,0));
+    for(uint i=0u;i<uint(g.modes.x);i++) {
+        LightData l=g.lights[i]; bool hit=true;
+        // 矩形 LTC 灯没有有限距离截止，不能用点光源 range 球将其漏剔。
+        if(int(l.directionKind.w)==1) {
+            vec3 p=(g.view*vec4(l.positionRange.xyz,1)).xyz; float r=max(l.positionRange.w,0);
+            hit=(-p.z+r>=z0 && -p.z-r<=z1);
+            for(int k=0;k<4;k++) hit=hit && dot(planes[k].xyz,p)>=-r*length(planes[k].xyz);
+        }
+        if(hit) lightLists[base+1u+count++]=i;
+    }
+    lightLists[base]=count;
+}

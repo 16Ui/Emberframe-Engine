@@ -1,0 +1,34 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "volume_common.glsl"
+layout(local_size_x=4,local_size_y=4,local_size_z=4) in;
+void main() {
+    ivec3 cell=ivec3(gl_GlobalInvocationID.xyz); if(!insideCell(cell)) return;
+    SH total=zeroSH();
+    int samples=rsmPacketCount();
+    for(int i=0;i<samples;++i) {
+        RsmPacket p=packets[i]; if(p.normalValid.w<=0) continue;
+        vec3 position=p.positionArea.xyz+p.normalValid.xyz*(.55*v.boundsMinCell.w);
+        if(!insideWorld(position)) continue;
+        // 将一个光通量样本按体素中心的三线性权重分给邻近格，而不是整包落到
+        // 单个最近格。六面 RSM 的稀疏样本否则会在表面形成规则明暗棋盘。
+        vec3 grid=(position-v.boundsMinCell.xyz)/v.boundsMinCell.w-.5;
+        ivec3 base=ivec3(floor(grid)),offset=cell-base;
+        if(any(lessThan(offset,ivec3(0)))||any(greaterThan(offset,ivec3(1)))) continue;
+        if(imageLoad(sourceVolume,cell).a>=1) continue;
+        vec3 f=fract(grid),weights=mix(1-f,f,vec3(offset));
+        float weight=weights.x*weights.y*weights.z,validWeight=0;
+        // 不往实心墙内注入；把剩余权重归一化，避免贴近墙时凭空丢掉一半通量。
+        for(int z=0;z<2;++z)for(int y=0;y<2;++y)for(int x=0;x<2;++x){
+            ivec3 o=ivec3(x,y,z),target=base+o;
+            if(!insideCell(target)||imageLoad(sourceVolume,target).a>=1)continue;
+            vec3 w=mix(1-f,f,vec3(o));validWeight+=w.x*w.y*w.z;
+        }
+        if(validWeight<=1e-7)continue;
+        vec4 basis=shBasis(p.normalValid.xyz); basis.yzw*=2.0/3.0;
+        total=addSH(total,projectSH(p.flux.rgb*(weight/validWeight),basis));
+    }
+    // 避免把注入格自身占据当作接收面；传播时由目标 occupancy 吸收。
+    int index=cellIndex(cell),count=cellCount();
+    fields[index]=total; fields[count+index]=zeroSH(); fields[2*count+index]=total;
+}

@@ -1,0 +1,2 @@
+// Windows Explorer / 任务栏使用可执行文件资源，不依赖旁边的 PNG 文件。
+101 ICON "@PROJECT_SOURCE_DIR@/assets/branding/emberframe.ico"

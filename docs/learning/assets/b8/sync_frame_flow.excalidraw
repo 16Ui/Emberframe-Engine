@@ -1,0 +1,358 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "https://excalidraw.com",
+  "elements": [
+    {
+      "type": "text", "id": "title", "x": 80, "y": 45, "width": 920, "height": 45,
+      "text": "B8：一帧怎样安全地从 Acquire 走到 Present", "originalText": "B8：一帧怎样安全地从 Acquire 走到 Present",
+      "fontSize": 34, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#1e40af", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100001,
+      "version": 1, "versionNonce": 100002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "subtitle", "x": 82, "y": 100, "width": 1500, "height": 28,
+      "text": "三种同步工具分别解决三种关系：Fence 管 CPU 复用；Semaphore 管队列间先后；Barrier 管同一命令流内的阶段、访问和布局。",
+      "originalText": "三种同步工具分别解决三种关系：Fence 管 CPU 复用；Semaphore 管队列间先后；Barrier 管同一命令流内的阶段、访问和布局。",
+      "fontSize": 19, "fontFamily": 3, "textAlign": "left", "verticalAlign": "top",
+      "strokeColor": "#64748b", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100003,
+      "version": 1, "versionNonce": 100004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "cpu_lane", "x": 80, "y": 175, "width": 1600, "height": 220,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#dbeafe", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100005,
+      "version": 1, "versionNonce": 100006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "cpu_label", "x": 105, "y": 195, "width": 200, "height": 30,
+      "text": "CPU / 主循环", "originalText": "CPU / 主循环", "fontSize": 24, "fontFamily": 3,
+      "textAlign": "left", "verticalAlign": "top", "strokeColor": "#1e40af", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "angle": 0, "seed": 100007, "version": 1, "versionNonce": 100008, "isDeleted": false,
+      "groupIds": [], "boundElements": null, "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "gpu_lane", "x": 80, "y": 425, "width": 1600, "height": 250,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#93c5fd", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100009,
+      "version": 1, "versionNonce": 100010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "gpu_label", "x": 105, "y": 447, "width": 260, "height": 30,
+      "text": "Graphics Queue / GPU", "originalText": "Graphics Queue / GPU", "fontSize": 24, "fontFamily": 3,
+      "textAlign": "left", "verticalAlign": "top", "strokeColor": "#1e40af", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "angle": 0, "seed": 100011, "version": 1, "versionNonce": 100012, "isDeleted": false,
+      "groupIds": [], "boundElements": null, "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "present_lane", "x": 80, "y": 705, "width": 1600, "height": 205,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 100013,
+      "version": 1, "versionNonce": 100014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "present_label", "x": 105, "y": 727, "width": 300, "height": 30,
+      "text": "Present Queue / 显示系统", "originalText": "Present Queue / 显示系统", "fontSize": 24, "fontFamily": 3,
+      "textAlign": "left", "verticalAlign": "top", "strokeColor": "#047857", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "angle": 0, "seed": 100015, "version": 1, "versionNonce": 100016, "isDeleted": false,
+      "groupIds": [], "boundElements": null, "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "cpu_1", "x": 210, "y": 270, "width": 170, "height": 55,
+      "text": "1  Wait Fence\nSlot 可复用", "originalText": "1  Wait Fence\nSlot 可复用", "fontSize": 18,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200001, "version": 1,
+      "versionNonce": 200002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "cpu_dot_1", "x": 283, "y": 335, "width": 18, "height": 18,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200003,
+      "version": 1, "versionNonce": 200004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "arrow", "id": "cpu_arrow_1", "x": 302, "y": 344, "width": 205, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200005,
+      "version": 1, "versionNonce": 200006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[205,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "cpu_2", "x": 435, "y": 270, "width": 190, "height": 55,
+      "text": "2  Acquire\n得到 imageIndex", "originalText": "2  Acquire\n得到 imageIndex", "fontSize": 18,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200007, "version": 1,
+      "versionNonce": 200008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "cpu_dot_2", "x": 507, "y": 335, "width": 18, "height": 18,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200009,
+      "version": 1, "versionNonce": 200010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "arrow", "id": "cpu_arrow_2", "x": 526, "y": 344, "width": 240, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200011,
+      "version": 1, "versionNonce": 200012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[240,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "cpu_3", "x": 690, "y": 260, "width": 210, "height": 75,
+      "text": "3  Reset Fence\nReset + Record\nCommand Buffer", "originalText": "3  Reset Fence\nReset + Record\nCommand Buffer",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200013, "version": 1,
+      "versionNonce": 200014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "cpu_dot_3", "x": 766, "y": 335, "width": 18, "height": 18,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200015,
+      "version": 1, "versionNonce": 200016, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "arrow", "id": "cpu_arrow_3", "x": 785, "y": 344, "width": 245, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200017,
+      "version": 1, "versionNonce": 200018, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[245,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "cpu_4", "x": 955, "y": 270, "width": 180, "height": 55,
+      "text": "4  QueueSubmit2\n交给 Graphics Queue", "originalText": "4  QueueSubmit2\n交给 Graphics Queue",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200019, "version": 1,
+      "versionNonce": 200020, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "cpu_dot_4", "x": 1030, "y": 335, "width": 18, "height": 18,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200021,
+      "version": 1, "versionNonce": 200022, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "arrow", "id": "cpu_arrow_4", "x": 1049, "y": 344, "width": 255, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200023,
+      "version": 1, "versionNonce": 200024, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[255,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "cpu_5", "x": 1230, "y": 270, "width": 180, "height": 55,
+      "text": "5  QueuePresent\n提交 imageIndex", "originalText": "5  QueuePresent\n提交 imageIndex", "fontSize": 18,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200025, "version": 1,
+      "versionNonce": 200026, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "ellipse", "id": "cpu_dot_5", "x": 1304, "y": 335, "width": 18, "height": 18,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 1,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 200027,
+      "version": 1, "versionNonce": 200028, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "fence_note", "x": 1385, "y": 272, "width": 240, "height": 55,
+      "text": "下一轮回到 Slot 时\n只等该 Slot 的 Fence", "originalText": "下一轮回到 Slot 时\n只等该 Slot 的 Fence",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#dc2626",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 200029, "version": 1,
+      "versionNonce": 200030, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "gpu_wait", "x": 405, "y": 520, "width": 250, "height": 60,
+      "text": "等待 imageAvailable\nSemaphore", "originalText": "等待 imageAvailable\nSemaphore", "fontSize": 20,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300001, "version": 1,
+      "versionNonce": 300002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "acquire_to_gpu", "x": 516, "y": 355, "width": 0, "height": 155,
+      "strokeColor": "#c2410c", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300003,
+      "version": 1, "versionNonce": 300004, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[0,155]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "gpu_barrier_1", "x": 690, "y": 505, "width": 225, "height": 85,
+      "text": "Barrier ①\nUNDEFINED →\nTRANSFER_DST", "originalText": "Barrier ①\nUNDEFINED →\nTRANSFER_DST", "fontSize": 19,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300005, "version": 1,
+      "versionNonce": 300006, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "gpu_arrow_1", "x": 625, "y": 610, "width": 168, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300007,
+      "version": 1, "versionNonce": 300008, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[168,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "rectangle", "id": "clear_box", "x": 920, "y": 505, "width": 230, "height": 110,
+      "strokeColor": "#1e3a5f", "backgroundColor": "#3b82f6", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300009,
+      "version": 1, "versionNonce": 300010, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "clear_text", "x": 945, "y": 530, "width": 180, "height": 60,
+      "text": "vkCmdClearColorImage\nGPU 写入整张 Image", "originalText": "vkCmdClearColorImage\nGPU 写入整张 Image",
+      "fontSize": 18, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#ffffff",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300011, "version": 1,
+      "versionNonce": 300012, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "gpu_arrow_2", "x": 1152, "y": 560, "width": 130, "height": 0,
+      "strokeColor": "#1e3a5f", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300013,
+      "version": 1, "versionNonce": 300014, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[130,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "gpu_barrier_2", "x": 1220, "y": 505, "width": 230, "height": 85,
+      "text": "Barrier ②\nTRANSFER_DST →\nPRESENT_SRC", "originalText": "Barrier ②\nTRANSFER_DST →\nPRESENT_SRC", "fontSize": 19,
+      "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300015, "version": 1,
+      "versionNonce": 300016, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "gpu_signal", "x": 1435, "y": 520, "width": 200, "height": 60,
+      "text": "发信号：renderFinished\n同时最终发信号：Fence", "originalText": "发信号：renderFinished\n同时最终发信号：Fence",
+      "fontSize": 17, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300017, "version": 1,
+      "versionNonce": 300018, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "gpu_to_present", "x": 1510, "y": 590, "width": -160, "height": 175,
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300019,
+      "version": 1, "versionNonce": 300020, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[0,90],[-160,175]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "text", "id": "present_wait", "x": 1150, "y": 785, "width": 300, "height": 65,
+      "text": "等待该 imageIndex 对应的\nrenderFinished Semaphore", "originalText": "等待该 imageIndex 对应的\nrenderFinished Semaphore",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300021, "version": 1,
+      "versionNonce": 300022, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "present_arrow", "x": 1450, "y": 820, "width": 135, "height": 0,
+      "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300023,
+      "version": 1, "versionNonce": 300024, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[135,0]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    },
+    {
+      "type": "ellipse", "id": "display_end", "x": 1560, "y": 770, "width": 90, "height": 90,
+      "strokeColor": "#047857", "backgroundColor": "#a7f3d0", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300025,
+      "version": 1, "versionNonce": 300026, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false
+    },
+    {
+      "type": "text", "id": "display_text", "x": 1572, "y": 796, "width": 65, "height": 38,
+      "text": "显示", "originalText": "显示", "fontSize": 22, "fontFamily": 3, "textAlign": "center",
+      "verticalAlign": "middle", "strokeColor": "#047857", "backgroundColor": "transparent", "fillStyle": "solid",
+      "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300027,
+      "version": 1, "versionNonce": 300028, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "rectangle", "id": "ownership_box", "x": 80, "y": 955, "width": 1600, "height": 180,
+      "strokeColor": "#b45309", "backgroundColor": "#fef3c7", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "solid", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300029,
+      "version": 1, "versionNonce": 300030, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "roundness": {"type": 3}
+    },
+    {
+      "type": "text", "id": "ownership_title", "x": 110, "y": 975, "width": 500, "height": 28,
+      "text": "两套索引不能混用", "originalText": "两套索引不能混用", "fontSize": 24, "fontFamily": 3,
+      "textAlign": "left", "verticalAlign": "top", "strokeColor": "#b45309", "backgroundColor": "transparent",
+      "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid", "roughness": 0, "opacity": 100,
+      "angle": 0, "seed": 300031, "version": 1, "versionNonce": 300032, "isDeleted": false,
+      "groupIds": [], "boundElements": null, "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "text", "id": "slot_resources", "x": 150, "y": 1030, "width": 600, "height": 65,
+      "text": "2 个 Frame Slot（frame % 2）\n每个：Pool + Buffer + Fence + imageAvailable", "originalText": "2 个 Frame Slot（frame % 2）\n每个：Pool + Buffer + Fence + imageAvailable",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300033, "version": 1,
+      "versionNonce": 300034, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "line", "id": "ownership_divider", "x": 850, "y": 1015, "width": 0, "height": 95,
+      "strokeColor": "#b45309", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 2,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 300035,
+      "version": 1, "versionNonce": 300036, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[0,95]]
+    },
+    {
+      "type": "text", "id": "image_resources", "x": 920, "y": 1030, "width": 650, "height": 65,
+      "text": "N 张 Swapchain Image（Acquire 返回 imageIndex）\n每张：一个 renderFinished，供对应 Present 等待", "originalText": "N 张 Swapchain Image（Acquire 返回 imageIndex）\n每张：一个 renderFinished，供对应 Present 等待",
+      "fontSize": 20, "fontFamily": 3, "textAlign": "left", "verticalAlign": "middle", "strokeColor": "#374151",
+      "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+      "roughness": 0, "opacity": 100, "angle": 0, "seed": 300037, "version": 1,
+      "versionNonce": 300038, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "containerId": null, "lineHeight": 1.25
+    },
+    {
+      "type": "arrow", "id": "fence_back_to_cpu", "x": 1555, "y": 520, "width": 0, "height": 185,
+      "strokeColor": "#dc2626", "backgroundColor": "transparent", "fillStyle": "solid", "strokeWidth": 3,
+      "strokeStyle": "dashed", "roughness": 0, "opacity": 100, "angle": 0, "seed": 400001,
+      "version": 1, "versionNonce": 400002, "isDeleted": false, "groupIds": [], "boundElements": null,
+      "link": null, "locked": false, "points": [[0,0],[0,-185]], "startBinding": null, "endBinding": null,
+      "startArrowhead": null, "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {"viewBackgroundColor": "#ffffff", "gridSize": 20},
+  "files": {}
+}
