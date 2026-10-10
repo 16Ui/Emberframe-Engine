@@ -1,0 +1,50 @@
+EmberFrame Workbench bundled software notices
+
+Dear ImGui
+Copyright (c) 2014-2024 Omar Cornut
+Developed by Omar Cornut and every direct or indirect contributor.
+Source: third_party/imgui/imgui.cpp (v1.90.6 WIP)
+
+OpenGL Mathematics (GLM)
+Copyright (c) 2005 - G-Truc Creation
+Source: https://raw.githubusercontent.com/g-truc/glm/0.9.9.7/copying.txt
+The MIT alternative is selected.
+
+Grisu2 floating-point conversion (embedded in simdjson)
+Copyright (c) 2009 Florian Loitsch
+Source: third_party/fastgltf/deps/simdjson/simdjson.cpp, dtoa_impl notice.
+The vendored attribution notice is also retained in simdjson-source-notices.txt.
+
+MIT License (applicable separately to the components above)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+simdjson
+Copyright simdjson authors and contributors.
+Source: https://github.com/simdjson/simdjson/tree/v3.3.0
+Licensed under the Apache License, Version 2.0; see Apache-2.0.txt.
+Additional notices in the vendored single-header and implementation are
+retained in simdjson-header-notices.txt and simdjson-source-notices.txt.
+
+First-party payload provenance (not a blanket relicensing of external assets)
+The procedural Workbench scenes and assets/software_renderer/textured_cube.obj
+are project demonstration content. The PNG/ICO in assets/branding are the
+project application icon; the generation record is in assets/branding/README.md.
+No commercial model collection, Lost Empire model or downloaded model library
+is included by default. Optional external assets have separate attribution.

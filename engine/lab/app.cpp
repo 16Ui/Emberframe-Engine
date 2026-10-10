@@ -4,6 +4,8 @@
 #include "systems.h"
 #include "geometry.h"
 #include "shading.h"
+#include "environment.h"
+#include "showcase.h"
 #include "shadow_gi.h"
 #include "postprocess.h"
 #include "reference_renderer.h"
@@ -59,6 +61,18 @@ std::filesystem::path path_from_utf8(std::string_view text){
 std::string path_to_utf8(const std::filesystem::path& path){
     const auto text=path.u8string();return std::string(reinterpret_cast<const char*>(text.data()),text.size());
 }
+bool force_portable=false;
+std::filesystem::path application_directory(){
+    char* base=SDL_GetBasePath();const auto path=base?path_from_utf8(base):std::filesystem::current_path();SDL_free(base);return path;
+}
+bool portable_mode(){return force_portable||std::filesystem::exists(application_directory()/"portable.ini");}
+std::filesystem::path asset_root(){return portable_mode()?application_directory():path_from_utf8(EMBERFRAME_SOURCE_DIR);}
+std::filesystem::path runtime_output_directory(){
+    if(!portable_mode())return asset_root()/"output";
+    // 解压包可能位于只读目录；用户状态不写入源码路径或 Program Files。
+    char* base=SDL_GetPrefPath("16Ui","EmberFrame");if(!base)throw std::runtime_error(SDL_GetError());
+    auto root=path_from_utf8(base)/"output";SDL_free(base);return root;
+}
 int& texture_slot(Material& material,TextureRole role){
     switch(role){case TextureRole::base_color:return material.base_texture;case TextureRole::metallic_roughness:return material.mr_texture;
         case TextureRole::normal:return material.normal_texture;case TextureRole::occlusion:return material.ao_texture;default:return material.emissive_texture;}
@@ -91,11 +105,18 @@ struct Options {
     bool fit_viewport=true,maximized=false,verify_window=false;
     bool verify_editor=false;
     bool developer_tools=false;
+    bool uncached_bounds=false;
+    bool profiler_visible=false;
     bool new_scene=false;
+    bool preset_explicit=false;
     int benchmark_frames=0;
     std::filesystem::path asset,project,output,screenshot;
     std::filesystem::path make_import_project;
     std::filesystem::path benchmark_output,graph_output;
+    std::filesystem::path profile_output;
+    std::filesystem::path environment_path;
+    std::string showcase;
+    bool object_replay=false;
     std::string resume_demo,replay;
     std::filesystem::path sequence_directory,demo_stats;
     int sequence_frames=48;
@@ -117,6 +138,10 @@ Options parse(int argc,char** argv){
         const std::string a=argv[i];
         auto value=[&](){if(i+1>=argc)throw std::invalid_argument("Missing value for "+a);return argv[++i];};
         if(a=="--headless")o.headless=true;
+        else if(a=="--portable")force_portable=true;
+        else if(a=="--environment")o.environment_path=path_from_utf8(value());
+        else if(a=="--showcase"){o.showcase=value();(void)parse_showcase(o.showcase);}
+        else if(a=="--object-replay")o.object_replay=true;
         else if(a=="--developer-tools")o.developer_tools=true;
         else if(a=="--new-scene")o.new_scene=true;
         else if(a=="--make-import-project")o.make_import_project=path_from_utf8(value());
@@ -132,10 +157,13 @@ Options parse(int argc,char** argv){
         else if(a=="--benchmark-frames")o.benchmark_frames=number(value(),3,1000);
         else if(a=="--benchmark-output")o.benchmark_output=path_from_utf8(value());
         else if(a=="--graph-output")o.graph_output=path_from_utf8(value());
+        else if(a=="--profile-output")o.profile_output=path_from_utf8(value());
+        else if(a=="--uncached-bounds")o.uncached_bounds=true;
+        else if(a=="--profiler")o.profiler_visible=true;
         else if(a=="--compare"){o.compare=true;o.frames=8;o.fit_viewport=false;}
         else if(a=="--reload-shaders")o.reload_shaders=true;
         else if(a=="--smoke-test"){o.smoke=true;o.frames=12;}
-        else if(a=="--preset")o.preset=number(value(),0,3);
+        else if(a=="--preset"){o.preset=number(value(),0,3);o.preset_explicit=true;}
         else if(a=="--topic")o.visual_topic=number(value(),1,32)-1;
         else if(a=="--frames")o.frames=number(value(),1,100000);
         else if(a=="--window-width")o.window_width=number(value(),640,3840);
@@ -203,6 +231,8 @@ Options parse(int argc,char** argv){
               <<"  --frames N --screenshot capture.bmp --smoke-test --no-bloom\n"
               <<"  --maximized --verify-window (window lifecycle diagnostic)\n";
             std::cout<<"  --gpu-hidden (real Vulkan, no visible window)\n  --benchmark --benchmark-output DIR (JobSystem)\n  --benchmark-frames N --benchmark-output DIR --graph-output DIR\n";
+            std::cout<<"  --profile-output NEW_DIR (completed per-Pass CPU/GPU JSON) --uncached-bounds (controlled bounds A/B)\n";
+            std::cout<<"  --portable (exe assets; user-state outside the source checkout)\n";
             std::cout<<"  --window-width 640..3840 --window-height 480..2160\n  --ui-panel 0..4 (render/material/demos/project/developer)\n  --developer-tools (show manual CPU references and diagnostics; starts nothing)\n  --fit-viewport (default; explicit --width/--height keeps fixed output size)\n";
             std::cout<<"  --resume-demo pbr|kc|lights|shadows|temporal|geometry (place before overrides)\n"
                      <<"  --camera-replay static|pan|orbit|dolly --capture-sequence NEW_DIR\n"
@@ -332,7 +362,7 @@ void validate_gpu_reference(const FrameReadback& frame,const Scene& scene,const 
     if(mae>.005||bad_ratio>.01)throw std::runtime_error("CPU/GPU albedo comparison exceeded tolerance; inspect output/comparison.json");
 }
 int run_window(Options options,Scene scene,Camera camera){
-    SessionLog session_log(path_from_utf8(EMBERFRAME_SOURCE_DIR)/"output/workbench.log");
+    SessionLog session_log(runtime_output_directory()/"workbench.log");
     emberframe::platform::SdlWindow window({.title="EmberFrame Editor",.width=std::uint32_t(options.window_width),.height=std::uint32_t(options.window_height),.resizable=true,.borderless=true});
     SDL_SetWindowMinimumSize(window.native_handle(),640,480);
     // 初始尺寸按当前屏幕工作区收敛，高缩放下不能把底部状态栏放到任务栏下面。
@@ -368,13 +398,17 @@ int run_window(Options options,Scene scene,Camera camera){
     SDL_free(base_path);
     const auto shader_dir=executable_dir/"lab_shaders";
     VulkanWorkbench gpu(window.native_handle(),shader_dir);
+    gpu.set_bounds_cache_enabled(!options.uncached_bounds);
     theme();
     auto settings=options.settings;UndoStack undo(64,256*1024*1024);ReferenceSession reference_session;ReferenceSessionInfo temporal_info;
     Camera replay_origin=camera;bool replay_running=!options.replay.empty();std::size_t replay_index=0;
+    struct MotionReplay {int node=-1;glm::mat4 original{1};std::uint64_t tick=0;bool active=false;};
+    MotionReplay motion_replay;
     const bool sequence_capture=!options.sequence_directory.empty();
     std::size_t sequence_index=0,sequence_warmup=0;bool sequence_pending=false;
     std::ofstream sequence_report;glm::vec3 capture_center(0);bool capture_center_valid=false;
     const auto sequence_started=std::chrono::steady_clock::now();
+    auto next_progress=sequence_started+std::chrono::seconds(3);
     if(sequence_capture){
         if(std::filesystem::exists(options.sequence_directory))throw std::invalid_argument("Sequence directory exists; choose a new directory");
         std::filesystem::create_directories(options.sequence_directory);
@@ -384,9 +418,10 @@ int run_window(Options options,Scene scene,Camera camera){
             <<",\"motion\":"<<std::quoted(options.replay.empty()?"static":options.replay)
             <<",\"gpuTimingIncludesReadback\":true,\"frames\":[\n";
     }
-    std::filesystem::path output_dir=path_from_utf8(EMBERFRAME_SOURCE_DIR)/"output";
+    std::filesystem::path output_dir=runtime_output_directory();
     std::filesystem::create_directories(output_dir);
     GpuTimingReport gpu_timings;gpu_timings.warmup_frames=30;std::uint64_t last_timing_serial=0;std::size_t eligible_samples=0;
+    std::vector<FrameProfile> measured_profiles;std::uint64_t last_profile_serial=0;
     std::future<SystemBenchmarkReport> system_benchmark;
     std::filesystem::path project_path=options.project.empty()?
         (options.new_scene?std::filesystem::path{}:output_dir/"session.ember"):options.project;
@@ -397,7 +432,7 @@ int run_window(Options options,Scene scene,Camera camera){
     // 内置场景的第一个网格是只有两个三角形的地板；默认选择后面的模型体验 QEM。
     int selected_material=0,selected_topic=0,preset=options.preset,visual_topic=options.visual_topic,selected_mesh=scene.meshes.size()>1?1:0;
     bool experiment_current_scene=!options.asset.empty();
-    bool show_scene=true,show_inspector=true;float scene_width=224,inspector_width=340;
+    bool show_scene=true,show_inspector=true,show_profiler=options.profiler_visible;float scene_width=224,inspector_width=340;
     // 工具开关不读 ImGui ini：普通启动始终隐藏；CLI 显式 CPU/专题请求才打开。
     bool show_developer_tools=options.developer_tools||options.visual_topic>=0||
         settings.path==RenderPath::cpu_raster||settings.path==RenderPath::path_trace;
@@ -448,6 +483,8 @@ int run_window(Options options,Scene scene,Camera camera){
     std::optional<FrameReadback> comparison_frame;
     std::optional<FrameReadback> output_frame;RenderPath executed_path=settings.path;
     std::future<LoadedSceneAsset> imported;std::future<TestResults> checks;TestResults test_results;
+    std::future<std::shared_ptr<const EnvironmentMap>> imported_environment;
+    std::uint64_t environment_epoch=0;
     auto last_edit=std::chrono::steady_clock::now()-std::chrono::seconds(1);
     auto mark_dirty=[&](){dirty=true;++generation;last_edit=std::chrono::steady_clock::now();bg.cancel=true;};
     // 资源版本与姿态版本分开：鼠标连续拖动只更新矩阵/灯光，不重复上传纹理。
@@ -461,7 +498,7 @@ int run_window(Options options,Scene scene,Camera camera){
             bake_geometry_revision=scene.revision;bake_geometry_assets=scene.asset_revision;
         }
         std::ostringstream key;key<<bake_geometry_hash<<':'<<int(settings.environment_diffuse)<<':'<<settings.sdf_shadows<<':'<<settings.bake_samples<<':'<<settings.sdf_resolution<<std::setprecision(9);
-        for(int i=0;i<3;++i)key<<':'<<scene.sky_top[i]<<':'<<scene.sky_bottom[i];return key.str();
+        for(int i=0;i<3;++i)key<<':'<<scene.sky_top[i]<<':'<<scene.sky_bottom[i];key<<':'<<environment_fingerprint(scene);return key.str();
     };
     auto start_bake=[&](){
         if(scene_bake.valid())return;
@@ -487,6 +524,7 @@ int run_window(Options options,Scene scene,Camera camera){
     };
     auto begin_edit=[&](const char* label){if(edit_before)return;if(undo.transaction_active())undo.commit();edit_before=std::make_shared<editor::Snapshot>(editor::Snapshot{scene,camera,settings});edit_label=label;};
     auto reset_document=[&](){finish_edit();++document_epoch;translation_drag.active=false;model_queue.clear();
+        motion_replay={};
         // 切换/返回预览时不等待后台工作；旧任务即使完成也不能写回新文档。
         scene_bake_cancel=true;bake_request_key.clear();bg.cancel=true;reference_generation=0;
         reference_snapshot.reset();reference_source.reset();reference_failed_generation=0;
@@ -540,6 +578,25 @@ int run_window(Options options,Scene scene,Camera camera){
         notice="已返回进入专题前的场景：模型、材质、灯光、相机、渲染参数和原撤销历史均已恢复。";
     };
     auto preset_scene=[&](int id){if(undo.transaction_active())undo.commit();reset_document();preset=id;scene=make_demo_scene(id);scene.revision=++generation;stamp_assets();visual_topic=-1;frame_camera(scene,camera);selected_material=0;selected_node=selected_light=-1;property_target=editor::PropertyTarget::none;selected_texture=-1;undo.clear();mark_dirty();};
+    auto open_showcase=[&](std::string_view id){
+        try{enter_topic_preview();auto project=make_showcase(id);scene=std::move(project.scene);camera=project.camera;settings=project.settings;
+            scene.revision=++generation;stamp_assets();selected_node=selected_light=-1;selected_material=0;property_target=editor::PropertyTarget::none;
+            active_topic=active_demo=-1;preset=-1;undo.clear();mark_dirty();notice="代表场景已打开；可返回进入前的工程。";
+        }catch(const std::exception& e){error=e.what();}
+    };
+    auto start_object_replay=[&]{
+        int node=selected_node;
+        if(node<0)for(std::size_t i=0;i<scene.nodes.size();++i)if(scene.nodes[i].mesh>=0&&
+            (scene.nodes[i].name.starts_with("材质球")||scene.nodes[i].name=="花器"||scene.nodes[i].name.starts_with("实例"))){node=int(i);break;}
+        if(node<0)for(std::size_t i=0;i<scene.nodes.size();++i)if(scene.nodes[i].mesh>=0){node=int(i);break;}
+        if(node<0)throw std::runtime_error("场景没有可回放的网格节点。");
+        motion_replay={node,scene.nodes.at(node).local,0,true};replay_running=false;
+    };
+    auto stop_object_replay=[&]{
+        if(motion_replay.active&&motion_replay.node>=0&&motion_replay.node<int(scene.nodes.size())){
+            scene.nodes[motion_replay.node].local=motion_replay.original;++scene.revision;mark_dirty();
+        }motion_replay={};
+    };
     auto import_asset=[&](std::filesystem::path path,bool replace=false){
         if(imported.valid()){if(!replace){model_queue.push_back(std::move(path));notice="模型已加入导入队列。";}return;}
         import_epoch=document_epoch;imported_replace=replace;
@@ -556,10 +613,16 @@ int run_window(Options options,Scene scene,Camera camera){
         texture_request=std::move(path);texture_role=role;texture_material=selected_material;
         open_texture_popup=true;requested_panel=1;show_inspector=true;
     };
+    auto request_environment=[&](std::filesystem::path path){
+        if(imported_environment.valid()){notice="HDR 环境仍在读取，请稍候。";return;}
+        environment_epoch=document_epoch;notice="正在后台读取 HDR 环境…";
+        imported_environment=std::async(std::launch::async,[path]{return load_environment_hdr(path);});
+    };
     auto browse=[&](editor::FileKind kind,TextureRole role=TextureRole::base_color){
         try{if(auto path=editor::choose_file(window.native_handle(),kind)){
             if(kind==editor::FileKind::model)request_model(*path,replace_import);
             else if(kind==editor::FileKind::texture)request_texture(*path,role);
+            else if(kind==editor::FileKind::environment)request_environment(*path);
             else{std::snprintf(path_text.data(),path_text.size(),"%s",path_to_utf8(*path).c_str());requested_panel=3;show_inspector=true;}
             return true;
         }}catch(const std::exception& e){error=e.what();}return false;
@@ -755,7 +818,9 @@ int run_window(Options options,Scene scene,Camera camera){
         if(shader_build.valid())return;
         try{
             if(!shader_library){
-                shader_library=std::make_unique<ShaderLibrary>(path_from_utf8(EMBERFRAME_SOURCE_DIR)/"engine/lab/shaders",output_dir/"shader-cache",path_from_utf8(EMBERFRAME_GLSLANG_PATH));
+                if(!std::filesystem::exists(asset_root()/"engine/lab/shaders")||!std::filesystem::exists(path_from_utf8(EMBERFRAME_GLSLANG_PATH)))
+                    throw std::runtime_error("当前演示包仅包含预编译 Shader；热重载需要源码和 Vulkan SDK 编译器，正常渲染不需要。");
+                shader_library=std::make_unique<ShaderLibrary>(asset_root()/"engine/lab/shaders",output_dir/"shader-cache",path_from_utf8(EMBERFRAME_GLSLANG_PATH));
                 shader_library->adopt_baseline(shader_dir);
             }
             auto* library=shader_library.get();shader_build=std::async(std::launch::async,[library](){return library->build();});
@@ -917,6 +982,7 @@ int run_window(Options options,Scene scene,Camera camera){
                 if(ImGui::MenuItem("打开工程…")&&browse(FileKind::project))load();
                 if(ImGui::MenuItem("追加模型…")){replace_import=false;browse(FileKind::model);}
                 if(ImGui::MenuItem("导入纹理…",nullptr,false,!scene.materials.empty()))browse(FileKind::texture);
+                if(ImGui::MenuItem("导入 HDR 环境…",nullptr,false,!imported_environment.valid()))browse(FileKind::environment);
                 if(ImGui::MenuItem("保存当前画面"))capture();
                 ImGui::Separator();if(ImGui::MenuItem("退出","Esc"))running=false;ImGui::EndMenu();
             }
@@ -926,6 +992,7 @@ int run_window(Options options,Scene scene,Camera camera){
             }
             if(ImGui::BeginMenu("视图")){
                 ImGui::MenuItem("场景与资源",nullptr,&show_scene);ImGui::MenuItem("属性检查器",nullptr,&show_inspector);
+                ImGui::MenuItem("性能分析",nullptr,&show_profiler);
                 if(ImGui::MenuItem("开发者工具",nullptr,show_developer_tools)){
                     try{set_developer_tools(!show_developer_tools);}catch(const std::exception& e){error=e.what();}
                 }
@@ -949,11 +1016,17 @@ int run_window(Options options,Scene scene,Camera camera){
             if(ImGui::BeginMenu("演示场景")){
                 if(ImGui::MenuItem("返回原场景","Esc",false,bool(topic_return))){try{return_from_topic();}catch(const std::exception& e){error=e.what();}}
                 ImGui::Separator();
+                for(const auto& showcase:showcase_catalog())if(ImGui::MenuItem(std::string(showcase.title).c_str()))open_showcase(showcase.id);
+                ImGui::Separator();
                 for(const auto& demo:demo_scenes)if(ImGui::MenuItem(demo.name))open_demo(demo.profile);
                 ImGui::Separator();
                 if(ImGui::MenuItem("平移回放 / TAA、CSM")){options.replay="pan";replay_origin=camera;replay_index=0;replay_running=true;}
                 if(ImGui::MenuItem("拉远回放 / LOD")){options.replay="dolly";replay_origin=camera;replay_index=0;replay_running=true;}
                 if(ImGui::MenuItem("停止回放",nullptr,false,replay_running)){replay_running=false;camera=replay_origin;mark_dirty();}
+                if(ImGui::MenuItem("所选物体运动 / TAA、SVGF",nullptr,false,!motion_replay.active)){
+                    try{start_object_replay();}catch(const std::exception& e){error=e.what();}
+                }
+                if(ImGui::MenuItem("停止物体运动并还原",nullptr,false,motion_replay.active))stop_object_replay();
                 ImGui::TextDisabled("回放不改变模型；资源完成后开始。");ImGui::EndMenu();
             }
             if(ImGui::BeginMenu("帮助")){
@@ -1173,6 +1246,17 @@ int run_window(Options options,Scene scene,Camera camera){
                     changed|=choice("间接光",settings.gi,"环境光\0SSR\0SSGI\0RSM\0LPV\0Voxel cone tracing\0关闭\0");
                     help("RSM / LPV / VCT 支持完整场景几何，不再限制 4096 个三角形。使用一盏主光源：方向光、点光六面或面积光灯心近似；无灯时没有可反弹光。SSR / SSGI 只使用屏幕可见数据，低采样可配合 SVGF。");
                     changed|=choice("环境漫反射",settings.environment_diffuse,"IBL 预卷积\0SH 球谐\0PRT 烘焙传输\0");help("作用于当前场景；PRT 为静态实例烘焙可见性，仍保留 IBL 镜面反射。需选择环境光间接光模式。");
+                    ImGui::SeparatorText("环境照明");
+                    ImGui::TextWrapped("%s",scene.environment_map?scene.environment_map->name().c_str():"解析天空（未导入 HDR）");
+                    ImGui::BeginDisabled(imported_environment.valid());
+                    if(ImGui::Button("导入 HDR…"))browse(FileKind::environment);
+                    ImGui::EndDisabled();
+                    if(scene.environment_map){
+                        ImGui::SameLine();if(ImGui::Button("恢复解析天空"))editor_change("清除 HDR 环境",[&]{set_scene_environment(scene,{},1,0);});
+                        float intensity=scene.environment_intensity,rotation=scene.environment_rotation;
+                        if(ImGui::SliderFloat("环境强度",&intensity,0,8,"%.2f"))editor_change("环境强度",[&]{set_scene_environment(scene,scene.environment_map,intensity,rotation);});
+                        if(ImGui::SliderFloat("环境旋转",&rotation,-180,180,"%.1f°"))editor_change("环境旋转",[&]{set_scene_environment(scene,scene.environment_map,intensity,rotation);});
+                    }
                     // GPU 无方向光时禁止新启用，仍允许关闭加载/脚本中保留的值。
                     const bool sdf_supported=!applicability.gpu_path_requested||applicability.gpu_sdf_supported;
                     ImGui::BeginDisabled(!sdf_supported&&!settings.sdf_shadows);
@@ -1533,7 +1617,7 @@ int run_window(Options options,Scene scene,Camera camera){
                     ImGui::SameLine();if(ImGui::Button("导入图片路径"))request_texture(path_from_utf8(texture_path_text.data()),texture_role);ImGui::EndDisabled();
                 }
                 if(section("免费示例资源")){
-                    const auto sample_root=path_from_utf8(EMBERFRAME_SOURCE_DIR)/"assets/import_samples";
+                    const auto sample_root=asset_root()/"assets/import_samples";
                     ImGui::TextWrapped("外部免费资源（CC0 / CC BY），可追加到任何场景；不会自动运行验证或切换场景。");
                     ImGui::BeginDisabled(imported.valid());
                     for(const auto& sample:editor::import_samples){
@@ -1755,6 +1839,28 @@ int run_window(Options options,Scene scene,Camera camera){
                 }
             }}catch(const std::exception& e){error=e.what();}
         }
+        if(show_profiler){
+            ImGui::SetNextWindowSize({680,510},ImGuiCond_FirstUseEver);
+            if(ImGui::Begin("性能分析",&show_profiler,ImGuiWindowFlags_NoCollapse)){
+                const auto& profile=gpu.stats().completed_profile;
+                if(!profile.completed)ImGui::TextUnformatted("等待第一份 GPU 已完成帧分析…");
+                else{
+                    ImGui::Text("已完成提交 #%llu · %d x %d",(unsigned long long)profile.serial,profile.width,profile.height);
+                    ImGui::Text("CPU %.3f ms · 资源 %.1f MiB",profile.cpu_total_ms,profile.allocated_bytes/1048576.);
+                    ImGui::SameLine();if(profile.gpu_ms>=0)ImGui::Text("· GPU %.3f ms",profile.gpu_ms);else ImGui::TextDisabled("· GPU 计时不可用");
+                    ImGui::Text("Fence 等待 %.3f · UI %.3f · 准备 %.3f · Acquire %.3f ms",profile.cpu_wait_ms,profile.cpu_ui_ms,profile.cpu_prepare_ms,profile.cpu_acquire_ms);
+                    ImGui::Text("几何准备 %.3f · 命令录制 %.3f · 提交/呈现 %.3f ms",profile.cpu_geometry_ms,profile.cpu_record_ms,profile.cpu_submit_ms);
+                    ImGui::Text("本次场景上传 %.1f KiB · 包围球 %s",profile.upload_bytes/1024.,profile.bounds_cached?"缓存":"逐帧计算");
+                    ImGui::TextWrapped("GPU 行是包含子步骤的区间，嵌套行不能相加；CPU 录制时间不是 GPU 执行时间。整帧 CPU 包含等待，不等于算法计算成本。");
+                    if(ImGui::Button("导出这份已完成帧 JSON")){try{save_frame_profile(profile,output_dir/"profiles"/("frame-"+std::to_string(profile.serial)+".json"));notice="已完成帧分析已保存到 output/profiles。";}catch(const std::exception& e){error=e.what();}}
+                    if(ImGui::BeginTable("Pass profile",3,ImGuiTableFlags_RowBg|ImGuiTableFlags_BordersInnerH|ImGuiTableFlags_ScrollY,{0,300})){
+                        ImGui::TableSetupColumn("实际 Pass");ImGui::TableSetupColumn("CPU 录制 / ms");ImGui::TableSetupColumn("GPU / ms");ImGui::TableHeadersRow();
+                        for(const auto& pass:profile.passes){ImGui::TableNextRow();ImGui::TableNextColumn();ImGui::Text("%*s%s",int(pass.depth*2),"",pass.name.c_str());ImGui::TableNextColumn();ImGui::Text("%.4f",pass.cpu_record_ms);ImGui::TableNextColumn();if(pass.gpu_ms>=0)ImGui::Text("%.4f",pass.gpu_ms);else ImGui::TextUnformatted("不可用");}
+                        ImGui::EndTable();
+                    }
+                }
+            }ImGui::End();
+        }
         if(edit_before&&!translation_drag.active&&!object_rotation_active&&!ImGui::IsAnyItemActive()){try{finish_edit();}catch(const std::exception& e){error=e.what();}}
     };
     bool editor_verified=false,editor_pose_started=false;int editor_ready_frames=0,editor_pose_frames=0,capture_ready_frames=0;
@@ -1775,13 +1881,13 @@ int run_window(Options options,Scene scene,Camera camera){
         require(undo.redo()&&glm::length(scene.lights[0].position-moved)<.0002f,"Light drag redo failed");stamp_assets();
         std::cout<<"PASS editor XYZ ray hit/drag, emitter follow, undo/redo\n";
         const auto nodes=scene.nodes.size(),materials=scene.materials.size();
-        auto imported_model=load_editor_model(path_from_utf8(EMBERFRAME_SOURCE_DIR)/"assets/software_renderer/textured_cube.obj");
+        auto imported_model=load_editor_model(asset_root()/"assets/software_renderer/textured_cube.obj");
         editor_change("验证 OBJ 追加",[&](){append_scene_asset(scene,std::move(imported_model.scene));});
         require(scene.nodes.size()>nodes&&scene.materials.size()>materials,"OBJ append did not preserve room and add assets");
         const auto appended_nodes=scene.nodes.size();require(undo.undo()&&scene.nodes.size()==nodes,"Append undo failed");stamp_assets();
         require(undo.redo()&&scene.nodes.size()==appended_nodes,"Append redo failed");stamp_assets();
         editor_change("验证节点平移",[&](){auto& node=scene.nodes.at(nodes);node.local=glm::translate(glm::mat4(1),glm::vec3(-.7f,.6f,1))*glm::scale(glm::mat4(1),glm::vec3(.3f));++scene.revision;});
-        const auto texture_count=scene.textures.size();auto texture=load_editor_texture(path_from_utf8(EMBERFRAME_SOURCE_DIR)/"assets/branding/emberframe-icon.png",TextureRole::base_color);
+        const auto texture_count=scene.textures.size();auto texture=load_editor_texture(asset_root()/"assets/branding/emberframe-icon.png",TextureRole::base_color);
         editor_change("验证颜色纹理绑定",[&](){bind_material_texture(scene,materials,std::move(texture),TextureRole::base_color);});
         require(scene.materials.at(materials).base_texture>=int(texture_count),"Imported texture was not bound");
         require(undo.undo()&&scene.textures.size()==texture_count,"Texture undo failed");stamp_assets();require(undo.redo()&&scene.textures.size()==texture_count+1,"Texture redo failed");stamp_assets();
@@ -1824,6 +1930,7 @@ int run_window(Options options,Scene scene,Camera camera){
                 std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return char(std::tolower(c));});
                 if(ext==".glb"||ext==".gltf"||ext==".obj")request_model(std::move(p),false);
                 else if(ext==".png"||ext==".jpg"||ext==".jpeg"||ext==".tga"||ext==".bmp")request_texture(std::move(p),TextureRole::base_color);
+                else if(ext==".hdr")request_environment(std::move(p));
                 else error="该文件类型暂不支持。模型使用 GLB / glTF / OBJ；FBX 请先转换为 GLB。";
             }
             if(event.type==SDL_MOUSEBUTTONUP&&event.button.button==SDL_BUTTON_LEFT&&object_rotation_active){
@@ -1933,6 +2040,12 @@ int run_window(Options options,Scene scene,Camera camera){
                 shader_library->activate(build.version);notice=build.cache_hit?"Shader 缓存命中，已安全替换。":"Shader 编译通过，已安全替换。";
             }catch(const std::exception& e){error=e.what();if(options.reload_shaders)throw;}
         }
+        if(imported_environment.valid()&&imported_environment.wait_for(std::chrono::seconds(0))==std::future_status::ready){
+            try{auto environment=imported_environment.get();
+                if(environment_epoch!=document_epoch)notice="工程已切换，旧 HDR 导入结果未提交。";
+                else{editor_change("导入 HDR 环境",[&]{set_scene_environment(scene,std::move(environment),1,0);});notice="HDR 已导入；IBL 正在后台预计算，工程保存包含环境像素。";}
+            }catch(const std::exception& e){error=e.what();}
+        }
         if(imported.valid()&&imported.wait_for(std::chrono::seconds(0))==std::future_status::ready){
             try{auto loaded=imported.get();if(import_epoch!=document_epoch){notice="工程已切换，旧模型导入结果未提交。";}
                 else{
@@ -1987,6 +2100,13 @@ int run_window(Options options,Scene scene,Camera camera){
             const auto count=sequence_capture?std::size_t(options.sequence_frames):std::size_t(240);
             const auto index=sequence_capture?sequence_index:replay_index%count;
             if(index<count){camera=replay_demo_camera(replay_origin,options.replay,index,count);dirty=true;}
+        }
+        if(options.object_replay&&!motion_replay.active){start_object_replay();options.object_replay=false;}
+        if(motion_replay.active&&!gpu.stats().uploadPending&&gpu.stats().environment_ready){
+            const float phase=float(motion_replay.tick++)*.035f;
+            const auto delta=glm::translate(glm::mat4(1),glm::vec3(.5f*std::sin(phase),0,0))*glm::rotate(glm::mat4(1),.35f*std::sin(phase),glm::vec3(0,1,0));
+            scene.nodes.at(motion_replay.node).local=delta*motion_replay.original;
+            ++scene.revision;scene.baked_resources.reset();dirty=true;
         }
         Settings actual=settings;
         if(visual_topic>=0)actual.path=RenderPath::cpu_raster;
@@ -2044,7 +2164,16 @@ int run_window(Options options,Scene scene,Camera camera){
         }
         // CPU 图像的呈现不需要每帧重扫网格/BVH；选物操作会按需准备空间索引。
         const Scene& render_scene=cpu||realtime_blocked?scene:scene_geometry.prepare(scene,camera,actual);
-        const bool gpu_ready=cpu||(!realtime_blocked&&!gpu.stats().uploadPending&&gpu.stats().displayedRevision==render_scene.revision&&gpu.stats().environment_ready&&gpu.stats().scene_resources_ready);
+        // 姿态每帧递增时，上一提交的姿态版本天然落后一帧；静态资产已匹配即可继续采样。
+        // 场景/材质替换仍必须等待完整资产版本，不能把上传中的旧画面当成完成。
+        const bool gpu_ready=cpu||(!realtime_blocked&&!gpu.stats().uploadPending&&
+            (gpu.stats().displayedRevision==render_scene.revision||(motion_replay.active&&render_scene.asset_revision&&gpu.stats().displayedAssetRevision==render_scene.asset_revision))&&gpu.stats().environment_ready&&gpu.stats().scene_resources_ready);
+        if((options.frames>0||options.benchmark_frames)&&std::chrono::steady_clock::now()>next_progress){
+            const auto& progress=gpu.stats();std::cerr<<"[Progress] frames="<<presented<<" revision="<<progress.displayedRevision<<'/'<<render_scene.revision
+                <<" upload="<<progress.uploadStage<<" env="<<progress.environment_ready<<" bake="<<progress.scene_resources_ready<<'\n';
+            next_progress=std::chrono::steady_clock::now()+std::chrono::seconds(3);
+            if(std::chrono::steady_clock::now()-sequence_started>std::chrono::seconds(120))throw std::runtime_error("Batch render timed out; inspect resource-readiness progress log");
+        }
         const bool resources_ready=(!cpu||reference_generation==generation)&&!shader_build.valid()&&!scene_bake.valid()&&!lod_chain_build.valid()&&gpu_ready;
         if(options.verify_editor&&!editor_verified&&resources_ready&&presented>=5){
             if(cpu)throw std::runtime_error("Editor integration check refuses CPU fallback");
@@ -2097,7 +2226,9 @@ int run_window(Options options,Scene scene,Camera camera){
                 }else if(options.compare)comparison_frame=std::move(readback);else output_frame=std::move(readback);
             }
             if(gpu_ready){++sequence_warmup;if(replay_running&&!sequence_capture)++replay_index;}
-            const auto& completed=gpu.stats();if(options.benchmark_frames&&gpu_ready&&!cpu&&completed.gpu_sample_serial>last_timing_serial&&completed.gpu_ms>=0){last_timing_serial=completed.gpu_sample_serial;++eligible_samples;if(eligible_samples>gpu_timings.warmup_frames)gpu_timings.samples.push_back({completed.gpu_sample_serial,completed.gpu_ms});}
+            const auto& completed=gpu.stats();if(options.benchmark_frames&&gpu_ready&&!cpu&&completed.gpu_sample_serial>last_timing_serial&&completed.gpu_ms>=0){last_timing_serial=completed.gpu_sample_serial;++eligible_samples;if(eligible_samples>gpu_timings.warmup_frames){gpu_timings.samples.push_back({completed.gpu_sample_serial,completed.gpu_ms});measured_profiles.push_back(completed.completed_profile);}}
+            if(!options.profile_output.empty()&&!options.benchmark_frames&&gpu_ready&&!cpu&&completed.completed_profile.completed&&completed.completed_profile.serial>last_profile_serial){
+                last_profile_serial=completed.completed_profile.serial;if(measured_profiles.size()<1000)measured_profiles.push_back(completed.completed_profile);}
         }catch(const std::exception& e){error=e.what();std::cerr<<"[Workbench] "<<error<<"\n";throw;}
         if(options.smoke&&presented==4){SDL_SetWindowSize(window.native_handle(),1280,800);gpu.resize();}
         if(options.benchmark_frames){if(gpu_timings.samples.size()>=std::size_t(options.benchmark_frames)||(!gpu.stats().timestamp_available&&presented>=std::uint64_t(options.benchmark_frames+30)))running=false;}
@@ -2135,6 +2266,13 @@ int run_window(Options options,Scene scene,Camera camera){
     if(!options.output.empty()){if(!output_frame)throw std::runtime_error("GPU --output needs a supported Vulkan route; use --headless for CPU reference");save_bmp(options.output,output_frame->image,settings.exposure);auto hdr=options.output;hdr.replace_extension(".pfm");save_pfm(hdr,output_frame->image);}
     if(!options.graph_output.empty())save_render_graph_snapshot(gpu.render_graph(),options.graph_output,{stats.graph_serial,stats.graph_revision,"Vulkan","completed"});
     if(options.benchmark_frames){gpu_timings.gpu_name=stats.gpu_name;gpu_timings.render_path=settings.path==RenderPath::deferred?"deferred":"forward";auto dir=options.benchmark_output.empty()?output_dir/"benchmark":options.benchmark_output;std::filesystem::create_directories(dir);save_gpu_timings(gpu_timings,dir/"gpu-timings.json");}
+    if(!options.profile_output.empty()){
+        if(std::filesystem::exists(options.profile_output))throw std::runtime_error("Profile output must be a NEW directory");
+        std::filesystem::create_directories(options.profile_output);std::ofstream manifest(options.profile_output/"index.json");
+        manifest<<"{\"schema\":\"emberframe.profile-series.v1\",\"gpu\":"<<std::quoted(stats.gpu_name)<<",\"readback_included\":"<<((sequence_capture||output_frame||options.compare)?"true":"false")<<",\"profiles\":[";
+        for(std::size_t i=0;i<measured_profiles.size();++i){const auto name="frame-"+std::to_string(measured_profiles[i].serial)+".json";save_frame_profile(measured_profiles[i],options.profile_output/name);if(i)manifest<<',';manifest<<std::quoted(name);}
+        manifest<<"]}\n";if(!manifest)throw std::runtime_error("Could not save profile series manifest");
+    }
     if(!options.demo_stats.empty()){
         if(!options.demo_stats.parent_path().empty())std::filesystem::create_directories(options.demo_stats.parent_path());std::ofstream report(options.demo_stats);
         const auto& geometry=scene_geometry.stats();
@@ -2165,11 +2303,13 @@ int run_window(Options options,Scene scene,Camera camera){
 int run_application(int argc,char** argv){
     try{
         auto options=parse(argc,argv);
+        if(!options.profile_output.empty()&&std::filesystem::exists(options.profile_output))
+            throw std::invalid_argument("Profile directory exists; choose a new directory");
         if(!options.make_import_project.empty()){
             const auto destination=std::filesystem::absolute(options.make_import_project);
             if(destination.extension()!=".ember"||std::filesystem::exists(destination))
                 throw std::invalid_argument("Choose a NEW .ember path; sample creation never overwrites an existing project");
-            auto sample=editor::make_import_sample_scene(path_from_utf8(EMBERFRAME_SOURCE_DIR)/"assets/import_samples");
+            auto sample=editor::make_import_sample_scene(asset_root()/"assets/import_samples");
             Camera camera;camera.position={7,5,9};camera.target={0,1,0};camera.fov=45;
             ProjectDocument document;document.scene=std::move(sample);document.camera=camera;document.settings=options.settings;
             document.settings.path=RenderPath::forward;document.settings.debug=DebugView::final_color;
@@ -2178,12 +2318,16 @@ int run_application(int argc,char** argv){
             std::cout<<"[Import project] models="<<document.scene.meshes.size()<<" textures="<<document.scene.textures.size()
                 <<" lights="<<document.scene.lights.size()<<" path="<<path_to_utf8(destination)<<"\n";return 0;
         }
-        if(options.benchmark){auto folder=options.benchmark_output.empty()?path_from_utf8(EMBERFRAME_SOURCE_DIR)/"output/benchmark":options.benchmark_output;auto report=run_system_benchmark(folder);std::cout<<system_benchmark_markdown(report);return report.all_outputs_match?0:1;}
+        if(options.benchmark){auto folder=options.benchmark_output.empty()?runtime_output_directory()/"benchmark":options.benchmark_output;auto report=run_system_benchmark(folder);std::cout<<system_benchmark_markdown(report);return report.all_outputs_match?0:1;}
         Scene scene;
-        if(options.new_scene){scene=editor::make_new_scene("Untitled scene",false,true);options.preset=-1;}
+        const bool default_showcase=options.showcase.empty()&&!options.preset_explicit&&!options.new_scene&&options.asset.empty()&&options.project.empty()&&options.resume_demo.empty()&&options.preset==0&&options.visual_topic<0&&!options.compare&&!options.smoke&&!options.verify_editor&&!options.headless;
+        if(default_showcase)options.showcase="materials";
+        if(!options.showcase.empty()){} // 下方同时应用代表场景的相机与默认参数。
+        else if(options.new_scene){scene=editor::make_new_scene("Untitled scene",false,true);options.preset=-1;}
         else if(options.asset.empty())scene=make_demo_scene(options.preset);
         else{auto loaded=load_editor_model(options.asset);for(const auto& warning:loaded.warnings)std::cerr<<"[Import] "<<warning<<"\n";scene=std::move(loaded.scene);}
         Camera camera;frame_camera(scene,camera);
+        if(!options.showcase.empty()){auto project=make_showcase(options.showcase);scene=std::move(project.scene);camera=project.camera;options.settings=project.settings;for(const auto& override:options.setting_overrides)override(options.settings);options.preset=-1;}
         if(!options.resume_demo.empty()){auto d=make_resume_demo(options.resume_demo);scene=std::move(d.scene);camera=d.camera;}
         const bool explicit_cpu=options.headless||options.visual_topic>=0||options.settings.path==RenderPath::cpu_raster||options.settings.path==RenderPath::path_trace;
         if(!options.project.empty()){
@@ -2195,6 +2339,7 @@ int run_application(int argc,char** argv){
                 std::cerr<<"[Project] Saved CPU reference mode not started; select it explicitly in Developer Tools.\n";
             }
         }
+        if(!options.environment_path.empty())set_scene_environment(scene,load_environment_hdr(options.environment_path));
         // 离线/批处理允许启动前明确生成；交互编辑器使用后台按钮，避免主线程做 QEM。
         if(options.settings.auto_lod&&(options.headless||options.frames>0||options.gpu_hidden)) {
             for(std::size_t i=0;i<scene.meshes.size();++i)if(scene.meshes[i].lods.empty()) {
@@ -2211,7 +2356,7 @@ int run_application(int argc,char** argv){
             const bool temporal=options.settings.taa||options.settings.denoise||options.settings.svgf;
             const int count=options.frames>0?options.frames:(temporal?8:1);
             for(int frame=0;frame<count;++frame)result=options.visual_topic>=0?run_visual_experiment(options.visual_topic,scene,camera,options.settings):session.render(scene,camera,options.settings);
-            const auto path=options.output.empty()?path_from_utf8(EMBERFRAME_SOURCE_DIR)/"output/reference.bmp":options.output;
+            const auto path=options.output.empty()?runtime_output_directory()/"reference.bmp":options.output;
             save_bmp(path,result.color,options.settings.exposure);
             auto hdr=path;hdr.replace_extension(".pfm");save_pfm(hdr,result.color);
             std::cout<<"[Reference] scene="<<scene.name<<" resolution="<<result.color.width<<"x"<<result.color.height<<" triangles="<<result.triangles<<" rays="<<result.rays<<" cpuMs="<<result.cpu_ms<<" output="<<path_to_utf8(path)<<"\n";

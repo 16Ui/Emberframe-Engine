@@ -91,7 +91,9 @@ public:
                   std::vector<std::string> depends_on = {});
     void export_resource(std::string_view name);
     GraphPlan compile() const; // Throws on unknown resources, bad reads, or any DAG cycle.
-    void execute(const GraphPlan&, const std::function<void(const ResourceBarrier&)>& barrier = {}) const;
+    // observer 包围实际 Barrier 与回调，用于逐 Pass 分析；异常路径仍配对结束。
+    void execute(const GraphPlan&, const std::function<void(const ResourceBarrier&)>& barrier = {},
+                 const std::function<void(std::string_view,bool)>& observer = {}) const;
     void clear();
 private:
     struct Resource { std::string name; bool imported; ResourceState initial; bool exported = false; };

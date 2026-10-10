@@ -98,6 +98,8 @@ struct SceneUploadSnapshot::Impl {
 };
 SceneUploadSnapshot::SceneUploadSnapshot(const Scene& source):impl_(std::make_unique<Impl>()){
     auto& p=*impl_;p.source=&source;p.revision=source.revision;p.scene.name=source.name;p.scene.revision=source.revision;p.scene.asset_revision=source.asset_revision;p.scene.sky_top=source.sky_top;p.scene.sky_bottom=source.sky_bottom;
+    // 环境为不可变共享资源，快照保活但不逐帧复制整张 HDR。
+    p.scene.environment_map=source.environment_map;p.scene.environment_intensity=source.environment_intensity;p.scene.environment_rotation=source.environment_rotation;
     auto add=[&](std::size_t count,std::size_t stride){if(count>(SIZE_MAX-p.total)/stride)throw std::length_error("Scene snapshot size overflow");p.total+=count*stride;};
     add(source.materials.size(),sizeof(Material));add(source.nodes.size(),sizeof(Node));add(source.lights.size(),sizeof(Light));
     for(const auto& m:source.meshes){add(m.vertices.size(),sizeof(Vertex));add(m.indices.size(),sizeof(std::uint32_t));add(m.primitives.size(),sizeof(Primitive));}

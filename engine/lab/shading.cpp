@@ -1,4 +1,5 @@
 #include "shading.h"
+#include "environment.h"
 #include <cmath>
 #include <numeric>
 
@@ -128,7 +129,11 @@ glm::vec3 tone_map(glm::vec3 color,float exposure) {
     return color;
 }
 glm::vec3 environment(const Scene& scene,glm::vec3 direction) {
-    direction=safe_normalize(direction);return positive(glm::mix(scene.sky_bottom,scene.sky_top,sat(direction.y*0.5f+0.5f)));
+    // 背景、路径追踪和 IBL 烘焙共用这一入口；HDR 是线性值，不能再作 sRGB 解码。
+    if(scene.environment_map)
+        return sample_environment_map(*scene.environment_map,environment_lookup_direction(direction,scene.environment_rotation))*scene.environment_intensity;
+    direction=safe_normalize(direction);
+    return positive(glm::mix(scene.sky_bottom,scene.sky_top,sat(direction.y*0.5f+0.5f)))*scene.environment_intensity;
 }
 void build_mips(Texture& t) { mips(t,false); }
 void build_normal_mips(Texture& t) { mips(t,true); }
@@ -489,13 +494,20 @@ IblData precompute_ibl(const RadianceFunction& env,IblOptions o) {
         result.brdf.at(x,y)=integrate_brdf(float(x)/(o.lut_resolution-1),float(y)/(o.lut_resolution-1),o.samples);
     return result;
 }
-glm::vec3 sample_ibl_diffuse(const IblData& ibl,glm::vec3 n) { return sample_latlong(ibl.diffuse,n); }
-glm::vec3 sample_ibl_specular(const IblData& ibl,glm::vec3 r,float roughness) {
-    if(ibl.specular.empty()) return glm::vec3(0);
-    const float level=sat(roughness)*float(ibl.specular.size()-1);const auto lo=std::size_t(level);
-    return glm::mix(sample_latlong(ibl.specular[lo],r),sample_latlong(ibl.specular[std::min(lo+1,ibl.specular.size()-1)],r),level-float(lo));
+glm::vec3 sample_ibl_diffuse(const IblData& ibl,glm::vec3 n) {
+    const auto& maps=ibl.shared_maps?*ibl.shared_maps:ibl;
+    return sample_latlong(maps.diffuse,environment_lookup_direction(n,ibl.environment_rotation))*ibl.environment_intensity;
 }
-glm::vec2 sample_brdf_lut(const IblData& ibl,float nv,float r) { return grid(ibl.brdf,sat(nv),sat(r)); }
+glm::vec3 sample_ibl_specular(const IblData& ibl,glm::vec3 r,float roughness) {
+    const auto& maps=ibl.shared_maps?*ibl.shared_maps:ibl;
+    if(maps.specular.empty()) return glm::vec3(0);
+    r=environment_lookup_direction(r,ibl.environment_rotation);
+    const float level=sat(roughness)*float(maps.specular.size()-1);const auto lo=std::size_t(level);
+    return glm::mix(sample_latlong(maps.specular[lo],r),sample_latlong(maps.specular[std::min(lo+1,maps.specular.size()-1)],r),level-float(lo))*ibl.environment_intensity;
+}
+glm::vec2 sample_brdf_lut(const IblData& ibl,float nv,float r) {
+    const auto& maps=ibl.shared_maps?*ibl.shared_maps:ibl;return grid(maps.brdf,sat(nv),sat(r));
+}
 glm::vec3 evaluate_ibl_specular(const IblData& ibl,glm::vec3 n,glm::vec3 v,glm::vec3 f0,float r) {
     n=safe_normalize(n);v=safe_normalize(v);const float nv=glm::dot(n,v);if(nv<=0) return glm::vec3(0);
     const auto ab=sample_brdf_lut(ibl,nv,r);return sample_ibl_specular(ibl,glm::reflect(-v,n),r)*(f0*ab.x+glm::vec3(ab.y));

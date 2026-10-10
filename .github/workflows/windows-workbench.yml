@@ -1,0 +1,123 @@
+name: Windows Workbench Build and CPU Checks
+
+on:
+  push:
+    branches: [main]
+    paths: ['engine/**', 'third_party/**', 'shared/**', 'samples/**', 'launcher/**', 'chapter-*/**', 'CMakeLists.txt', 'CMakePresets.json', 'scripts/**', 'assets/branding/**', 'assets/fonts/**', 'docs/DEMO_DELIVERY.md', 'docs/THIRD_PARTY_LICENSES.md', 'docs/licenses/**', '.github/workflows/windows-workbench.yml']
+  pull_request:
+    paths: ['engine/**', 'third_party/**', 'shared/**', 'samples/**', 'launcher/**', 'chapter-*/**', 'CMakeLists.txt', 'CMakePresets.json', 'scripts/**', 'assets/branding/**', 'assets/fonts/**', 'docs/DEMO_DELIVERY.md', 'docs/THIRD_PARTY_LICENSES.md', 'docs/licenses/**', '.github/workflows/windows-workbench.yml']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Also package the built Release demo (requires a licensed assets/fonts/DroidSansFallback.ttf and LICENSE.txt)'
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workbench-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-release-cpu:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VULKAN_SDK_VERSION: '1.3.296.0'
+    steps:
+      # Official release commits, verified against actions/* on 2026-10-09.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install pinned Vulkan SDK for compilation only
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:VULKAN_SDK_VERSION
+          $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK/$version"
+          $installer = Join-Path $env:RUNNER_TEMP "VulkanSDK-$version-Installer.exe"
+          $shaUrl = "https://sdk.lunarg.com/sdk/sha/$version/windows/vulkan_sdk.exe.json"
+          $info = Invoke-RestMethod -Uri $shaUrl
+          if ($info.version -ne $version -or $info.platform -ne 'windows' -or $info.sha -notmatch '^[a-fA-F0-9]{64}$') {
+            throw 'Invalid official SDK checksum response.'
+          }
+          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$version/windows/vulkan_sdk.exe" -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $info.sha) { throw 'Vulkan SDK checksum mismatch.' }
+          $process = Start-Process -FilePath $installer -ArgumentList @('--root', "`"$sdkRoot`"", '--accept-licenses', '--default-answer', '--confirm-command', 'install', 'copy_only=1') -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "SDK installation failed: $($process.ExitCode)" }
+          foreach ($file in @('Include/vulkan/vulkan.h','Lib/vulkan-1.lib','Bin/glslangValidator.exe')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $sdkRoot $file))) { throw "SDK missing $file" }
+          }
+          "VULKAN_SDK=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          (Join-Path $sdkRoot 'Bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          New-Item -ItemType Directory -Path output/ci -Force | Out-Null
+          $info | ConvertTo-Json | Set-Content output/ci/vulkan-sdk-download.json -Encoding utf8
+
+      - name: Configure MSVC x64 Release
+        run: |
+          cmake --preset windows-vs2022 -T v143 -DFASTGLTF_ENABLE_TESTS=OFF -DFASTGLTF_ENABLE_EXAMPLES=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
+          cmake --version | Set-Content output/ci/cmake-version.txt -Encoding utf8
+          Copy-Item -LiteralPath build/CMakeCache.txt -Destination output/ci/CMakeCache.txt
+
+      - name: Build Workbench and CPU check targets
+        run: |
+          cmake --build build --config Release --target emberframe_workbench emberframe_lab_tests emberframe_registry_test emberframe_profiler_test --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
+          $exe = Get-Item bin/Release/emberframe_workbench.exe
+          $record = [ordered]@{
+            schemaVersion = 1; gitRevision = $env:GITHUB_SHA
+            executableSha256 = (Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            createdUtc = [DateTime]::UtcNow.ToString('o')
+            configuration = 'Release'; architecture = 'x64'; generator = 'Visual Studio 17 2022'; toolset = 'v143'
+            vulkanSdkVersion = $env:VULKAN_SDK_VERSION; runnerImageVersion = $env:ImageVersion
+            githubRunId = $env:GITHUB_RUN_ID; gpuVerification = 'not-run'
+          }
+          $record | ConvertTo-Json | Set-Content output/ci/build-metadata.json -Encoding utf8
+
+      - name: CPU checks only (no GPU device assumed)
+        run: |
+          ctest --test-dir build -C Release -R '^lab_' --output-on-failure --no-tests=error --output-junit "$env:GITHUB_WORKSPACE/output/ci/cpu-checks.xml" 2>&1 | Tee-Object output/ci/cpu-checks.log
+          if ($LASTEXITCODE -ne 0) { throw 'CPU lab checks failed.' }
+          & ./bin/Release/emberframe_registry_test.exe 2>&1 | Tee-Object output/ci/registry.log
+          if ($LASTEXITCODE -ne 0) { throw 'Resource registry checks failed.' }
+          & ./bin/Release/emberframe_profiler_test.exe 2>&1 | Tee-Object output/ci/profiler.log
+          if ($LASTEXITCODE -ne 0) { throw 'CPU profiler checks failed.' }
+          @('MSVC Release build and CPU checks passed.', 'GPU/driver/visual/portable relocation verification: NOT RUN on this hosted runner.') | Set-Content output/ci/VERIFICATION_SCOPE.txt -Encoding utf8
+
+      - name: Package existing Release outputs (manual opt-in only)
+        if: github.event_name == 'workflow_dispatch' && inputs.package
+        id: package
+        run: |
+          $result = & ./scripts/package-workbench.ps1 -SkipBuild -BuildMetadataPath ./output/ci/build-metadata.json
+          "archive=$($result.Archive)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "summary=$($result.Summary)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload build and CPU evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-release-cpu-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/ci/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload portable demo artifact (not a GitHub Release)
+        if: success() && steps.package.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: EmberFrame-Windows-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.package.outputs.archive }}
+            ${{ steps.package.outputs.archive }}.sha256
+            ${{ steps.package.outputs.summary }}
+          if-no-files-found: error
+          retention-days: 14

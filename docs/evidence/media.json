@@ -1,0 +1,43 @@
+{
+  "schema": "emberframe.public-media.v1",
+  "executableSha256": "4ADBBD56E6D1D9733D8A2B926DE0F9AA0BB6EC4910B5C1990461122543652F5B",
+  "origin": "Actual EmberFrame GPU readback; BMP converted losslessly to PNG; not generated illustrations",
+  "images": [
+    {
+      "file": "docs/media/showcase-materials.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "517D7894FCBC4D9836D62DB894D0A11D761AA53B6CD5423DE2F49C35D1017F7E"
+    },
+    {
+      "file": "docs/media/showcase-interior.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "9D79038309DEDF86A86DCFE583C12589EB3E750BA4DCEA3577817BD9CAB24BEC"
+    },
+    {
+      "file": "docs/media/showcase-many-objects.png",
+      "width": 1280,
+      "height": 720,
+      "sha256": "405D603652DE78BFBBFC01B0AC8BCBD66DA88FB8254E7A2C9FD9174369D62E68"
+    },
+    {
+      "file": "docs/media/moving-object.png",
+      "width": 640,
+      "height": 360,
+      "sha256": "AEC3BADDD9E4CDBDB679ABCA3E201B22BCDD36F8723B27E5D671DBD4E85EB443"
+    },
+    {
+      "file": "docs/media/external-hdr.png",
+      "width": 640,
+      "height": 360,
+      "sha256": "62B09D54F10AEB076ADD5385AB94E66CC87589662ACF9FCA36F5C47C1F1C0179"
+    },
+    {
+      "file": "docs/media/editor-profiler.png",
+      "width": 1800,
+      "height": 1125,
+      "sha256": "611CEEF7D148AFA0F41030342DFE05570745A9513CEA5F547CB6540746B3033E"
+    }
+  ]
+}

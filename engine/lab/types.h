@@ -99,6 +99,7 @@ struct Light {
     int linked_node=-1;
 };
 struct SceneBakeResources;
+struct EnvironmentMap;
 struct Scene {
     std::string name="Material studio";
     std::vector<Mesh> meshes;
@@ -113,6 +114,10 @@ struct Scene {
     std::uint64_t asset_revision=0;
     // 不可变场景烘焙快照。几何/变换改变时必须核对指纹，不能只看 revision。
     std::shared_ptr<const SceneBakeResources> baked_resources;
+    // HDR 环境是共享的不可变快照；Scene/撤销/后台 IBL 任务不重复复制大图。
+    // 空指针保留解析天空。旋转为绕世界 +Y 轴的角度（度），强度是线性倍率。
+    std::shared_ptr<const EnvironmentMap> environment_map;
+    float environment_intensity=1,environment_rotation=0;
 };
 struct Camera {
     glm::vec3 position{5,3,6},target{0,0.5f,0};

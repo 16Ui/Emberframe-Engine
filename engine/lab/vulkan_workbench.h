@@ -1,6 +1,7 @@
 #pragma once
 #include "types.h"
 #include "systems.h"
+#include "frame_profile.h"
 #include <memory>
 #include <optional>
 
@@ -9,6 +10,7 @@ union SDL_Event;
 
 namespace emberframe::lab {
 struct WorkbenchStats {
+    FrameProfile completed_profile; // 只在对应 Fence 与 timestamp 完成后发布。
     // GPU timestamp interval includes scene, postprocess and UI, excludes screenshot transfer.
     // A negative value means timestamps are unavailable or no completed frame exists yet.
     double gpu_ms=-1;
@@ -39,6 +41,7 @@ struct WorkbenchStats {
     std::size_t uploadBudget=4*1024*1024;
     std::string uploadStage="idle",uploadError;
     std::uint64_t displayedRevision=0;
+    std::uint64_t displayedAssetRevision=0; // 与姿态无关的静态资源版本，用于连续运动时的就绪判定。
     bool scene_resources_ready=false; // 所选 SH/PRT/SDF 已准备并随当前场景上传完成。
     bool scene_resources_pending=false; // 主机快照、后台烘焙或 GPU 发布仍在进行。
     std::string scene_resources_error; // 独立错误，不与旧场景上传成功状态混淆。
@@ -63,7 +66,7 @@ struct FrameReadback {
 // Host preparation has a soft 2 ms deadline per phase; single driver allocations or string
 // copies can exceed it. Upload submission is strictly byte-budgeted; no per-upload waits.
 // shader_dir contains <shader filename>.spv produced by VULKAN_BUILD.cmake.
-// Native VkPipelineCache is shared by graphics/compute/ImGui and stored in exe/cache/;
+// Native VkPipelineCache is shared by graphics/compute/ImGui and stored in user cache/;
 // vendor/device/driver/UUID/ABI + checksum are validated. Bad data rebuilds automatically.
 // 实际 GPU：前向/七目标 G-buffer 延迟、GGX/Disney/KC、TBN、软件各向异性过滤、
 // LTC 矩形光、预过滤 IBL、PCSS/三层 CSM/VSM+SAT/VSSM/MSM、SSAO/GTAO、
@@ -72,12 +75,12 @@ struct FrameReadback {
 // Compute tests camera/light frustum spheres and writes indexed indirect commands;
 // one indirect draw per primitive (no optional multiDrawIndirect/device-address feature).
 // Scene passes use RenderGraph::compile/execute to emit actual Vulkan barriers.
-// 边界：透明排序而非 OIT；没有 MSAA、硬件光追、外部 HDR 环境导入。
+// 边界：透明排序而非 OIT；没有 MSAA、硬件光追或蒙皮运动。
 // 体积 GI 通过 GPU BVH 处理完整几何，受设备内存/SSBO 限制；网格为 16/32。
 // 当前使用一盏主灯：方向光、点光六面或面积光灯心近似；LPV 为 l<=1 SH，VCT 各向同性。
 // LTC 粗表、有限采样、屏幕外信息缺失与未分离漫/镜面的降噪均有近似误差。
-// IBL 烘焙解析天空；背景线程只持有数值快照，GPU 每帧查表而非 CPU 计算片元。
-// 运动向量重投影相机+静态世界位置；节点变换使历史失效，不伪装蒙皮 motion。
+// IBL 支持解析天空和外部 Radiance HDR；背景任务共享不可变环境，GPU 每帧查表。
+// 运动向量重投影相机+持久对象刚体/仿射变换；新显露区域拒绝历史，不冒充蒙皮 motion。
 // Kulla-Conty uploads the real shared default_energy_lut() and uses its endpoint grid.
 // Finite environment samples and LUT resolution are numerical approximation limits.
 // Texture wrap modes are honored. FilterMode::trilinear honors imported glTF min/mag
@@ -104,6 +107,8 @@ public:
     // Per draw transfer cap, rounded down to 4 bytes; range 64 KiB..12 MiB, default 4 MiB.
     // Shared ring has 3 x 4 MiB slices. Busy ring/host preparation can submit less.
     void set_upload_budget(std::size_t bytes);
+    // 开发者 A/B：只改变包围球计算位置，不改变剔除或绘制结果。
+    void set_bounds_cache_enabled(bool enabled) noexcept;
     // Starts ImGui, calls ui(), then reads scene/settings (ui may change them), draws/presents.
     // False means minimized/out-of-date and no image was presented. Throws on real errors.
     bool draw(const Scene&,const Camera&,const Settings&,const std::function<void()>& ui);

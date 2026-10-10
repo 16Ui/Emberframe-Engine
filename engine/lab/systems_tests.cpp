@@ -195,6 +195,15 @@ TestResults test_systems() {
         check(plan.lifetimes.size()==2&&plan.lifetimes[0].first==0&&plan.lifetimes[0].last==1&&plan.lifetimes[1].first==1&&plan.lifetimes[1].last==2,"Wrong resource lifetime intervals");
         graph.add_resource("new");throws([&]{graph.execute(plan);},"Stale plan accepted");
     });
+    test("C6 render graph: observers include barriers and unwind failures",[]{
+        RenderGraph graph;graph.add_resource("x");std::vector<std::string> events;
+        graph.add_pass("write",{{"x",ResourceAccess::write,ResourceState::storage}},[&]{events.push_back("callback");throw std::runtime_error("expected");},true);
+        const auto plan=graph.compile();bool rejected=false;
+        try{graph.execute(plan,[&](const ResourceBarrier&){events.push_back("barrier");},
+            [&](std::string_view name,bool begin){events.push_back(std::string(name)+(begin?"+":"-"));});}
+        catch(const std::runtime_error&){rejected=true;}
+        check(rejected&&events==std::vector<std::string>{"write+","barrier","callback","write-"},"Profile observer did not bracket real execution failure");
+    });
     test("C6 render graph: overwrite cull, read_modify_write and same-state barrier",[]{
         RenderGraph graph;graph.add_resource("value");int value=0;
         graph.add_pass("overwritten",{{"value",ResourceAccess::write,ResourceState::storage}},[&]{value=100;});

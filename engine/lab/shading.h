@@ -15,6 +15,7 @@ float linear_to_srgb(float value);
 // Exposure is a nonnegative linear multiplier; fitted ACES curve, then sRGB encoding.
 glm::vec3 tone_map(glm::vec3 color,float exposure);
 glm::vec3 environment(const Scene&,glm::vec3 direction);
+// 可选 HDR 与解析天空共用此入口；返回线性辐亮度，包含场景环境旋转/强度。
 
 // Repeat addressing. Decode sRGB BEFORE interpolation; alpha is always linear.
 // Derivatives are UV/pixel; anisotropic filtering uses the ellipse's principal
@@ -131,6 +132,10 @@ struct IblData {
     Image<glm::vec3> diffuse;
     std::vector<Image<glm::vec3>> specular;
     Image<glm::vec2> brdf;
+    // Scene IBL 在环境坐标中烘焙；查表时统一逆旋转并乘强度，与 GPU 完全同序。
+    // 缓存视图只引用不可变预过滤数组，旋转/强度编辑不重新积分或复制纹理。
+    float environment_intensity=1,environment_rotation=0;
+    std::shared_ptr<const IblData> shared_maps;
 };
 IblData precompute_ibl(const RadianceFunction&,IblOptions options={});
 glm::vec3 sample_ibl_diffuse(const IblData&,glm::vec3 normal);

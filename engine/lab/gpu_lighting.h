@@ -6,7 +6,7 @@
 
 namespace emberframe::lab {
 // SET=3: 0 UBO，1 diffuse irradiance，2 specular roughness mip levels，
-// 3 BRDF A/B，4 LTC inverse x/z block，5 LTC inverse yy + A/B + fit error。
+// 3 BRDF A/B，4 LTC inverse x/z block，5 LTC inverse yy + A/B + fit error，6 原始 HDR 背景。
 // 纹理均为普通 2D；手工双线性采样不要求 float32 linear filtering/descriptor indexing。
 class GpuLighting {
 public:
@@ -20,7 +20,8 @@ public:
     VkDescriptorSet descriptor_set(std::uint32_t frame_index) const;
     // 调用前必须等待该 frame slot 的渲染 fence；仅更新该 slot 的 UBO/descriptor。
     // 与主渲染共用队列：在同一主线程调用，提交之间需遵守 Vulkan 外部同步。
-    // 后台任务只持有天空颜色值。旧纹理由两个 frame slot 分别保活，普通帧不重烘焙。
+    // 后台任务只持有天空颜色和共享不可变 HDR。旧纹理由两个 frame slot 分别保活。
+    // 旋转/强度不重烘焙；背景与 IBL 原子切换，需由主 shader 调用 gpu_environment_background。
     void configure(const Scene&,const Settings&,std::uint32_t frame_index);
     // 本模块没有 VkPipeline，GLSL 是 include-only，所有使用它的 core shader 由主事务编译。
     // 校验新目录后等待 device idle，再无异常提交目录；失败保持旧目录和全部资源。

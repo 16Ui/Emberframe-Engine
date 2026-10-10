@@ -1,6 +1,7 @@
 #include "editor_assets.h"
 #include "editor_lights.h"
 #include "shading.h"
+#include "environment.h"
 #include <fastgltf/parser.hpp>
 #include <charconv>
 #include <fstream>
@@ -919,5 +920,34 @@ int bind_material_texture(Scene& scene, std::size_t material, Texture texture, T
     static_assert(std::is_nothrow_move_constructible_v<Texture>);
     int& slot = texture_slot(scene.materials[material],role);
     scene.textures.push_back(std::move(texture)); slot = id; ++scene.revision;scene.asset_revision=0; return id;
+}
+SceneEnvironmentSnapshot capture_environment_snapshot(const Scene& scene) {
+    validate_environment_settings(scene);
+    return {scene.environment_map,scene.sky_top,scene.sky_bottom,scene.environment_intensity,scene.environment_rotation};
+}
+void restore_environment_snapshot(Scene& scene,const SceneEnvironmentSnapshot& snapshot) {
+    Scene candidate;candidate.sky_top=snapshot.sky_top;candidate.sky_bottom=snapshot.sky_bottom;
+    candidate.environment_map=snapshot.map;candidate.environment_intensity=snapshot.intensity;
+    candidate.environment_rotation=snapshot.rotation;validate_environment_settings(candidate);
+    scene.sky_top=snapshot.sky_top;scene.sky_bottom=snapshot.sky_bottom;scene.environment_map=snapshot.map;
+    scene.environment_intensity=snapshot.intensity;scene.environment_rotation=snapshot.rotation;
+}
+void set_scene_environment(Scene& scene,std::shared_ptr<const EnvironmentMap> map,float intensity,float rotation) {
+    SceneEnvironmentSnapshot snapshot{std::move(map),scene.sky_top,scene.sky_bottom,intensity,rotation};
+    if(scene.revision==UINT64_MAX)throw std::overflow_error("Scene revision exhausted");
+    restore_environment_snapshot(scene,snapshot);++scene.revision;
+    // PRT transfer 仍可复用；SceneBakeResources 按环境指纹重算 SH，不清除静态几何烘焙。
+}
+EnvironmentProjectSnapshot capture_environment_project_snapshot(const Scene& scene,const Camera& camera,const Settings& settings) {
+    EnvironmentProjectSnapshot result;result.environment=capture_environment_snapshot(scene);
+    ProjectDocument document;document.scene=scene;document.scene.environment_map.reset();
+    document.camera=camera;document.settings=settings;result.project=serialize_project(document);return result;
+}
+void restore_environment_project_snapshot(const EnvironmentProjectSnapshot& snapshot,Scene& scene,Camera& camera,Settings& settings) {
+    auto document=deserialize_project(snapshot.project);
+    restore_environment_snapshot(document.scene,snapshot.environment);
+    const auto revision=std::max(scene.revision,document.scene.revision);
+    if(revision==UINT64_MAX)throw std::overflow_error("Scene revision exhausted");
+    document.scene.revision=revision+1;scene=std::move(document.scene);camera=document.camera;settings=document.settings;
 }
 } // namespace emberframe::lab

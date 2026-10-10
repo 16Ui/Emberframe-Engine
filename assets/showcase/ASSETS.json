@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "source": "studio_small_08_1k.hdr",
+      "destination": "assets/showcase/studio_small_08_1k.hdr",
+      "sha256": "f6a989f89432eb4eee3191364a9c1ceed195c4ec3544173a3c04fd96cb91d0ba",
+      "author": "Sergej Majboroda / Poly Haven",
+      "license": "CC0-1.0",
+      "origin": "https://polyhaven.com/a/studio_small_08",
+      "licenseFile": "CC0-1.0.txt",
+      "licenseSha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    }
+  ]
+}

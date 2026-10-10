@@ -1,3 +1,7 @@
 *.blend  -delta
 *.glb  -delta
 *.spv  -delta
+
+# Preserve original notices and byte-level asset/license hashes across checkouts.
+assets/fonts/LICENSE.txt -text
+assets/showcase/CC0-1.0.txt -text

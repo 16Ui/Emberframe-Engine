@@ -294,7 +294,7 @@ std::string render_graph_json(const GraphPlan& plan, const GraphSnapshotInfo& in
         << ",\n  \"original_dependencies_available\": true,\n"
            "  \"dependency_coverage\": \"compiler_edges_between_active_passes\",\n"
            "  \"dependency_types_available\": false,\n"
-           "  \"scope\": \"GraphPlan only; no Vulkan masks, subresources, alias allocation, post/UI/present outside this plan\",\n"
+           "  \"scope\": \"Declared GraphPlan passes and resources; no Vulkan masks, subresource ranges or physical alias allocation; module-internal barriers may remain internal\",\n"
            "  \"lifetime_index_semantics\": \"first/last index compiled order; exported last=pass_count denotes external consumer boundary\",\n"
            "  \"passes\": [";
     for (std::size_t i = 0; i < n; ++i) {

@@ -1,4 +1,5 @@
 #include "scene_geometry.h"
+#include "environment.h"
 #include <sstream>
 
 namespace emberframe::lab {
@@ -291,6 +292,18 @@ TestResults test_scene_geometry() {
         require(runtime.prepare(source,camera,s).textures[0].levels[0].pixels[2]==glm::vec4(1,0,0,1),"Static texture edit ignored asset revision");
         s.auto_lod=true;require(runtime.prepare(source,camera,s).asset_revision==0,"Automatic LOD incorrectly reused static asset contract");
         return "连续 8 次变换复用像素与顶点存储；资源变更仍更新纹理，自动 LOD 保留完整上传路径";
+    });
+    run("Scene geometry propagates HDR replacement and sliders without copying immutable pixels",[]() -> std::string {
+        auto source=scene_with_grid();source.asset_revision=1;Settings s;s.auto_lod=false;
+        SceneGeometryRuntime runtime;auto camera=camera_at(10);(void)runtime.prepare(source,camera,s);
+        source.environment_map=make_environment_map(Image<glm::vec3>(4,2,{2,1,.5f}));++source.revision;
+        const auto& imported=runtime.prepare(source,camera,s);
+        require(imported.environment_map==source.environment_map,"HDR replacement lost at scene preparation boundary");
+        source.environment_intensity=.4f;source.environment_rotation=82;++source.revision;
+        const auto& adjusted=runtime.prepare(source,camera,s);
+        require(adjusted.environment_intensity==.4f&&adjusted.environment_rotation==82,"HDR sliders ignored by prepared scene");
+        require(adjusted.environment_map==source.environment_map,"Immutable HDR pixels copied instead of shared");
+        return "Renderer consumes the updated HDR identity, rotation and intensity";
     });
     return results;
 }

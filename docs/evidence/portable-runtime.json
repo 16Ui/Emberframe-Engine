@@ -1,0 +1,48 @@
+{
+  "schema": "emberframe.portable-runtime-verification.v1",
+  "time": "2026-10-09T23:24:22.9348253+08:00",
+  "archiveSha256": "1BB3872C14A896C9FEAF91F6BA0AF543EBB5CF8D6135DE5F4F249B26CB4DCE0C",
+  "executableSha256": "4ADBBD56E6D1D9733D8A2B926DE0F9AA0BB6EC4910B5C1990461122543652F5B",
+  "payloadHashesVerified": 65,
+  "runtimeValidation": "same-machine-relocated-no-sdk-paths-no-validation-layer",
+  "cases": [
+    {
+      "scene": "materials",
+      "exit": 0,
+      "seconds": 4.4501872,
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "presentedFrames": 89,
+      "validationLayer": "unavailable",
+      "image": "materials.bmp",
+      "imageSha256": "71817BF6037DBC6093726DE2EA94E7987519D4E6539E1F07CDC43EB7EC455579"
+    },
+    {
+      "scene": "interior",
+      "exit": 0,
+      "seconds": 3.6337466,
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "presentedFrames": 20,
+      "validationLayer": "unavailable",
+      "image": "interior.bmp",
+      "imageSha256": "59B24A16D697A515D46602151BEE19B524D33B16C7E2A125117C966858F61844"
+    },
+    {
+      "scene": "many-objects",
+      "exit": 0,
+      "seconds": 2.7546638,
+      "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "presentedFrames": 102,
+      "validationLayer": "unavailable",
+      "image": "many-objects.bmp",
+      "imageSha256": "CAFCB3642B9DDD96C5F2B1BD43014992B742E3CB3B83B0EBBE759D0D61B60592"
+    }
+  ],
+  "packageFileListUnchanged": true,
+  "pathContainsSpacesAndChinese": true,
+  "cwdUnrelatedToPackage": true,
+  "sdkInstalledOnHost": true,
+  "sourceCheckoutRetained": true,
+  "readOnlyAclTested": false,
+  "crossMachineTested": false,
+  "scope": "SDK remains installed, but no SDK PATH or explicit validation layer is available to these child runs. Original source checkout was not renamed/deleted. Not a clean-machine or read-only ACL acceptance."
+}

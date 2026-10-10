@@ -1,5 +1,6 @@
 #include "systems.h"
 #include "scene_resources.h"
+#include "environment.h"
 #include <fastgltf/parser.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 #ifdef _MSC_VER
@@ -360,11 +361,17 @@ GraphPlan RenderGraph::compile() const {
     }
     return result;
 }
-void RenderGraph::execute(const GraphPlan& plan, const std::function<void(const ResourceBarrier&)>& barrier) const {
+void RenderGraph::execute(const GraphPlan& plan, const std::function<void(const ResourceBarrier&)>& barrier,
+                          const std::function<void(std::string_view,bool)>& observer) const {
     if (plan.owner_ != this || plan.generation_ != generation_) throw std::logic_error("Stale or foreign render graph plan");
     for (std::size_t i = 0; i < plan.order.size(); ++i) {
-        if (barrier) for (const auto& b : plan.barriers) if (b.before_pass == i) barrier(b);
-        passes_.at(plan.order[i]).callback();
+        const auto& pass=passes_.at(plan.order[i]);
+        if(observer)observer(pass.name,true);
+        try {
+            if (barrier) for (const auto& b : plan.barriers) if (b.before_pass == i) barrier(b);
+            pass.callback();
+        } catch(...) { if(observer)observer(pass.name,false);throw; }
+        if(observer)observer(pass.name,false);
     }
 }
 
@@ -554,7 +561,7 @@ template<class V> bool finite_vec(const V& v) {
 }
 float decode_srgb(float x) { return x<=.04045f ? x/12.92f : std::pow((x+.055f)/1.055f,2.4f); }
 float encode_srgb(float x) { return x<=.0031308f ? 12.92f*x : 1.055f*std::pow(x,1.f/2.4f)-.055f; }
-void build_mips(Texture& texture) {
+void build_asset_mips(Texture& texture) {
     // 颜色先转线性再平均，最后重新编码；alpha 从不参与 sRGB 变换。
     // 奇数尺寸按面积重采样，不丢弃最后一行/列。法线贴图这里保存数据平均，采样后需归一化。
     while(texture.levels.back().width>1 || texture.levels.back().height>1) {
@@ -696,7 +703,7 @@ LoadedSceneAsset load_scene_asset_detailed(const std::filesystem::path& input_pa
         for(std::size_t i=0;i<target.levels[0].pixels.size();++i) {
             const auto* p=pixels.get()+4*i;target.levels[0].pixels[i]=glm::vec4(p[0],p[1],p[2],p[3])/255.f;
         }
-        decoded_pixels+=std::size_t(w)*h;build_mips(target);
+        decoded_pixels+=std::size_t(w)*h;build_asset_mips(target);
         TextureSampler sampler;
         if(source.samplerIndex) {
             require(*source.samplerIndex<asset.samplers.size(),"Invalid sampler index");const auto& s=asset.samplers[*source.samplerIndex];
@@ -1024,6 +1031,7 @@ std::size_t index_value(std::istream& line,std::size_t size,bool append=false) {
 void validate_project(const ProjectDocument& p) {
     const auto& s=p.scene;const auto& c=p.camera;const auto& settings=p.settings;
     require(finite_vec(s.sky_top)&&finite_vec(s.sky_bottom),"Nonfinite sky");
+    validate_environment_settings(s);
     require(finite_vec(c.position)&&finite_vec(c.target)&&std::isfinite(c.fov)&&c.fov>0&&c.fov<179&&std::isfinite(c.near_plane)&&std::isfinite(c.far_plane)&&c.near_plane>0&&c.far_plane>c.near_plane,"Invalid camera");
 #define CHECK_ENUM(name,type,last) require(int(settings.name)>=0 && int(settings.name)<=last,"Invalid settings enum: " #name);
     EF_SETTING_ENUMS(CHECK_ENUM)
@@ -1085,7 +1093,11 @@ std::string serialize_project(const ProjectDocument& p) {
     validate_project(p);std::ostringstream out;out.imbue(std::locale::classic());out<<std::setprecision(std::numeric_limits<float>::max_digits10);
     const auto& scene=p.scene;const auto& settings=p.settings;
     out<<"EmberFrame scene format 1\nscene.name "<<hex_string(scene.name)<<"\nscene.revision "<<scene.revision<<"\nscene.sky";
-    emit(out,scene.sky_top);emit(out,scene.sky_bottom);out<<"\ncamera";emit(out,p.camera.position);emit(out,p.camera.target);
+    emit(out,scene.sky_top);emit(out,scene.sky_bottom);
+    out<<"\nscene.environment "<<scene.environment_intensity<<' '<<scene.environment_rotation<<'\n';
+    // 数据与工程一同保存；原导入文件移走、改名或复制工程到另一台机器均不失效。
+    if(scene.environment_map)out<<"scene.environment_map "<<hex_string(serialize_environment(*scene.environment_map))<<'\n';
+    out<<"camera";emit(out,p.camera.position);emit(out,p.camera.target);
     out<<' '<<p.camera.fov<<' '<<p.camera.near_plane<<' '<<p.camera.far_plane<<'\n';
 #define WRITE_ENUM(name,type,last) out<<"settings." #name " "<<int(settings.name)<<'\n';
     EF_SETTING_ENUMS(WRITE_ENUM)
@@ -1158,6 +1170,12 @@ ProjectDocument deserialize_project(std::string_view bytes) {
             if(tag=="scene.name"){std::string value;read_value(line,value);scene.name=unhex(value);}
             else if(tag=="scene.revision")read_value(line,scene.revision);
             else if(tag=="scene.sky"){read_value(line,scene.sky_top);read_value(line,scene.sky_bottom);}
+            else if(tag=="scene.environment"){read_value(line,scene.environment_intensity);read_value(line,scene.environment_rotation);}
+            else if(tag=="scene.environment_map"){
+                std::string data;read_value(line,data);
+                require(data.size()<=2*(40+4096+EnvironmentLimits::pixels*12),"Embedded HDR exceeds byte budget");
+                scene.environment_map=deserialize_environment(unhex(data));
+            }
             else if(tag=="scene.bake"){std::string data;read_value(line,data);scene.baked_resources=deserialize_scene_resources(unhex(data));}
             else if(tag=="camera"){read_value(line,p.camera.position);read_value(line,p.camera.target);read_value(line,p.camera.fov);read_value(line,p.camera.near_plane);read_value(line,p.camera.far_plane);}
 #define READ_ENUM(name,type,last) else if(tag=="settings." #name){int value;read_value(line,value);require(value>=0&&value<=last,"Invalid settings enum");settings.name=type(value);}

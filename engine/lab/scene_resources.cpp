@@ -1,6 +1,7 @@
 #include "scene_resources.h"
 #include "geometry.h"
 #include "shading.h"
+#include "environment.h"
 #include <bit>
 #include <mutex>
 #include <numeric>
@@ -33,9 +34,12 @@ std::uint64_t bytes_hash(std::string_view bytes) {
     Hash h;for(unsigned char c:bytes)h.byte(c);return h.value;
 }
 std::uint64_t environment_hash(const Scene& scene) {
-    Hash h;h.vector(scene.sky_top);h.vector(scene.sky_bottom);return h.value;
+    return environment_fingerprint(scene);
 }
 EnvironmentSh9 project_environment(const Scene& scene) {
+    validate_environment_settings(scene);
+    // HDR 方向分布不能套用线性天空的解析系数；保留固定、可复现的 SH 积分。
+    if(scene.environment_map)return project_sh9([&scene](glm::vec3 d){return environment(scene,d);},8192);
     EnvironmentSh9 result{};
     for(int channel=0;channel<3;++channel) {
         // 当前真实天空是 max(a+b*y,0)。对每个通道解析积分，常量/线性天空没有采样噪声。
@@ -56,6 +60,7 @@ EnvironmentSh9 project_environment(const Scene& scene) {
         result[6][channel]=float(tau*.3153915653*(m0*.5-m2*1.5));
         result[8][channel]=float(tau*.5462742153*(m0*.5-m2*1.5));
     }
+    for(auto& coefficient:result)coefficient*=scene.environment_intensity;
     return result;
 }
 struct Instance { int node,mesh;glm::mat4 world; };

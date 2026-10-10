@@ -70,6 +70,7 @@ TestResults test_diagnostics() {
         const auto json = render_graph_json(plan);
         check(json.find("\"from_order\":1,\"to_order\":2") != std::string::npos && json.find("\"declaration_index\":4") != std::string::npos, "JSON index semantics lost");
         check(json.find("\"original_dependencies_available\": true") != std::string::npos, "Actual edge coverage missing");
+        check(json.find("post/UI/present outside this plan") == std::string::npos, "Export scope must not exclude passes that the caller actually included");
         check(plan.culled_passes == std::vector<std::string>({"dead-write"}) && json.find("dead-write") != std::string::npos, "Culled passes lost");
     });
     test("automatic barriers include same-state hazards and exported boundary", [] {

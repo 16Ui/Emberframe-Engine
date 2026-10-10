@@ -29,6 +29,25 @@ LoadedSceneAsset load_editor_model(const std::filesystem::path& path);
 // 颜色在解码后的线性空间生成 NPOT mip；法线 mip 重新归一化，默认重复/三线性采样。
 Texture load_editor_texture(const std::filesystem::path& path, TextureRole role);
 
+// 环境独立快照只保存共享引用与小参数，不复制 HDR 像素。解析天空也一起恢复。
+struct SceneEnvironmentSnapshot {
+    std::shared_ptr<const EnvironmentMap> map;
+    glm::vec3 sky_top{},sky_bottom{};
+    float intensity=1,rotation=0;
+};
+SceneEnvironmentSnapshot capture_environment_snapshot(const Scene&);
+void restore_environment_snapshot(Scene&,const SceneEnvironmentSnapshot&);
+// 替换环境是一次事务；失败不改 Scene，成功递增 revision 并使环境烘焙指纹失效。
+void set_scene_environment(Scene&,std::shared_ptr<const EnvironmentMap>,float intensity=1,float rotation=0);
+// 编辑器撤销/演示回退入口：常规工程文本不含 HDR，HDR 快照另行保活。
+// 不用于磁盘保存；save_project_document 仍嵌入完整环境数据，保证便携性。
+struct EnvironmentProjectSnapshot {
+    std::string project;
+    SceneEnvironmentSnapshot environment;
+};
+EnvironmentProjectSnapshot capture_environment_project_snapshot(const Scene&,const Camera&,const Settings&);
+void restore_environment_project_snapshot(const EnvironmentProjectSnapshot&,Scene&,Camera&,Settings&);
+
 // 先校验、复制并重映射，再 noexcept 提交；任何异常保持 destination 完全不变。
 // 导入节点挂到 source.name 命名的恒等根节点；无显式节点的网格转为等价实例。
 // 材质、纹理、LOD、层级、linked_node 一并重映射，失效烘焙缓存并递增 revision。

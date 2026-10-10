@@ -196,7 +196,7 @@ CPU 调用 `run_system_benchmark(output_directory, options)`，默认 262,144 �
 
 图导出 `save_render_graph(plan, path, info)` 或 `save_render_graph_snapshot(plan, directory, info)`；也提供 `RenderGraph` 重载。每帧可复制最新计划作为值快照，不持有 GPU 对象或 pass 回调。正常计时期间不要每帧写磁盘。DOT 的 pass 间黑线**只使用** `GraphPlan.dependencies`，没有人为的执行序串联。计划保存边的两端，尚不保存边的 RAW/WAR/WAW/显式分类，导出不伪造类型。Barrier 蓝线表示“作用于哪个 pass 之前”，资源虚线表示生命周期端点；生命期 first 不必是依赖 producer。
 
-图快照的 `frame_serial` 应是录制/提交该计划的 serial，`scene_revision` 应是实际呈现场景的 revision；不能拿最近完成的 timestamp serial 标注最新录制图。`status` 由调用方填写 recorded/submitted/completed。计划可能只覆盖场景 passes；post/UI/present 或独立 effects 执行器若没有纳入该 GraphPlan，就不会被此导出自动覆盖。面板展示额外 effect pass 的文本不代表它们已经进入依赖 JSON。当前生命期是整个资源、单队列、无物理 alias 分配与跨队列 ownership 描述。
+图快照的 `frame_serial` 应是录制/提交该计划的 serial，`scene_revision` 应是实际呈现场景的 revision；不能拿最近完成的 timestamp serial 标注最新录制图。`status` 由调用方填写 recorded/submitted/completed。当前 Workbench 的外层图已纳入实际启用的屏幕效果、SVGF/TAA、Bloom、Tone Mapping、编辑器 UI 和 Present 布局交接；其依赖和屏障通过同一执行计划调度。部分模块内部的子步骤仍自行管理屏障，导出不是每条 Vulkan 命令的完整追踪。其他调用方若提交局部 GraphPlan，导出只覆盖该计划，不能从面板文字推断额外依赖。当前生命期是整个资源、单队列、无物理 alias 分配与跨队列 ownership 描述。
 
 GPU 调用 `save_gpu_timings(report, path)`；主入口在 FrameSlot Fence 已完成且 timestamp query 返回成功时更新 `gpu_sample_serial`，样本必须与这次的 `gpu_ms` 绑定，仅追加一次。资源准备结束后预热 30 个有效完成帧，再采 N 个独立样本。两 FrameSlot 的完成统计存在延迟，不能把当前 draw 的统计和上一提交的时间混称同一帧。readback/截屏/热重载与正常渲染采样分开；GPU 区间包含 scene/post/UI，截图 copy 在区间之外，帧 HDR readback 会进入区间，因此不能用于正常性能比较。
 

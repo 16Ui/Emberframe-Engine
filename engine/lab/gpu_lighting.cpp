@@ -3,6 +3,7 @@
 #endif
 #include "gpu_lighting.h"
 #include "shading.h"
+#include "environment.h"
 #include <bit>
 #include <chrono>
 #include <cstring>
@@ -23,16 +24,22 @@ void lighting_check(VkResult result,const char* operation) {
 bool finite(glm::vec3 x) { return std::isfinite(x.x)&&std::isfinite(x.y)&&std::isfinite(x.z); }
 struct SkyKey {
     glm::vec3 top{},bottom{};
-    bool operator==(const SkyKey& other) const { return top==other.top&&bottom==other.bottom; }
+    std::shared_ptr<const EnvironmentMap> map;
+    bool operator==(const SkyKey& other) const {
+        if(bool(map)!=bool(other.map))return false;
+        if(map)return map->fingerprint()==other.map->fingerprint();
+        return top==other.top&&bottom==other.bottom;
+    }
 };
 SkyKey sky_key(const Scene& scene) {
-    if(!finite(scene.sky_top)||!finite(scene.sky_bottom)) throw std::invalid_argument("Non-finite lighting sky");
+    validate_environment_settings(scene);
     // environment() 在插值之后才截断负辐亮度，不提前改变 sky 的两个端点。
-    return {scene.sky_top,scene.sky_bottom};
+    return {scene.sky_top,scene.sky_bottom,scene.environment_map};
 }
 IblData bake_sky(SkyKey key) {
-    Scene sky;sky.sky_top=key.top;sky.sky_bottom=key.bottom;
-    return precompute_ibl([sky=std::move(sky)](glm::vec3 d){return environment(sky,d);});
+    // 在环境自己的方向坐标中只烘焙一次。旋转/强度由查表端统一应用。
+    Scene sky;sky.sky_top=key.top;sky.sky_bottom=key.bottom;sky.environment_map=key.map;
+    return precompute_scene_ibl(sky,scene_ibl_options(sky));
 }
 const LtcLut& lighting_ltc() {
     // 共享算法自行拟合的 8x8 粗表，每进程只拟合一次；保留 error，不能宣称论文精度。
@@ -52,10 +59,11 @@ struct alignas(16) LightingRectangle {
 struct alignas(16) LightingUniform {
     glm::vec4 sky_top{},sky_bottom{};
     glm::ivec4 metadata{};
+    glm::vec4 environment{1,1,0,0}; // intensity, cos(rotation), sin(rotation), has HDR
     std::array<LightingRectangle,GpuLighting::light_limit> rectangles{};
 };
 static_assert(sizeof(glm::vec4)==16&&sizeof(LightingRectangle)==64);
-static_assert(offsetof(LightingUniform,rectangles)==48&&sizeof(LightingUniform)==4144);
+static_assert(offsetof(LightingUniform,rectangles)==64&&sizeof(LightingUniform)==4160);
 
 struct LightingBuffer {
     VmaAllocator allocator{};VkBuffer buffer{};VmaAllocation allocation{};void* mapped{};
@@ -67,7 +75,7 @@ struct LightingTexture {
     ~LightingTexture(){if(view)vkDestroyImageView(device,view,nullptr);if(image)vmaDestroyImage(allocator,image,allocation);}
 };
 struct LightingEnvironment {
-    SkyKey sky;std::shared_ptr<LightingTexture> diffuse,specular;
+    SkyKey sky;std::shared_ptr<LightingTexture> diffuse,specular,background;
 };
 struct TextureUpload {
     std::shared_ptr<LightingTexture> texture;
@@ -100,7 +108,9 @@ std::uint32_t round_shift(std::uint32_t x,unsigned shift) {
 }
 std::uint16_t lighting_half(float value) {
     if(!std::isfinite(value)) throw std::runtime_error("Non-finite lighting texture data");
-    value=std::clamp(value,-65504.f,65504.f);
+    // 辐照度包含 pi，即使源 RGBE 可表示，卷积结果也可能超出 half。
+    // 明确拒绝，不悄悄截断能量；支持 RGBA32F 的设备优先走 32F 路径。
+    if(std::abs(value)>65504.f)throw std::runtime_error("Lighting radiance/irradiance exceeds RGBA16F; RGBA32F is required");
     const auto bits=std::bit_cast<std::uint32_t>(value),sign=(bits>>16)&0x8000u,mantissa=bits&0x7fffffu;
     const int exponent=int((bits>>23)&255u)-127;
     if(exponent<-25) return std::uint16_t(sign);
@@ -182,6 +192,10 @@ struct GpuLighting::Impl {
         for(const auto& level:ibl.specular) levels.push_back(rgba(level));
         textures.push_back(to_upload(std::move(levels)));
         environment->diffuse=textures[0].texture;environment->specular=textures[1].texture;
+        // 原始背景不能拿低分辨率预过滤图代替；与 IBL 放在同一上传事务里发布。
+        if(key.map)textures.push_back(to_upload({rgba(key.map->image())}));
+        else textures.push_back(to_upload({Image<glm::vec4>(1,1,glm::vec4(0,0,0,1))}));
+        environment->background=textures.back().texture;
         return {std::move(environment),std::move(textures)};
     }
     void submit_upload(std::vector<TextureUpload> textures,std::shared_ptr<LightingEnvironment> environment={}) {
@@ -238,9 +252,9 @@ struct GpuLighting::Impl {
     }
     void write_set(std::uint32_t frame) {
         VkDescriptorBufferInfo uniform{uniforms[frame]->buffer,0,sizeof(LightingUniform)};
-        std::array<VkDescriptorImageInfo,5> images{};
-        const std::array<std::shared_ptr<LightingTexture>,5> textures{active->diffuse,active->specular,brdf,inverse,amplitude};
-        std::array<VkWriteDescriptorSet,6> writes{};
+        std::array<VkDescriptorImageInfo,6> images{};
+        const std::array<std::shared_ptr<LightingTexture>,6> textures{active->diffuse,active->specular,brdf,inverse,amplitude,active->background};
+        std::array<VkWriteDescriptorSet,7> writes{};
         for(std::size_t i=0;i<writes.size();++i) {
             auto& write=writes[i];write.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;write.dstSet=sets[frame];
             write.dstBinding=std::uint32_t(i);write.descriptorCount=1;
@@ -267,7 +281,7 @@ struct GpuLighting::Impl {
         if(format==VK_FORMAT_UNDEFINED)throw std::runtime_error("No sampled RGBA32F/RGBA16F transfer-destination format");
         VkPhysicalDeviceProperties properties{};vkGetPhysicalDeviceProperties(physical,&properties);
         if(properties.limits.maxUniformBufferRange<sizeof(LightingUniform))throw std::runtime_error("Lighting UBO exceeds device range");
-        std::array<VkDescriptorSetLayoutBinding,6> bindings{};
+        std::array<VkDescriptorSetLayoutBinding,7> bindings{};
         for(std::size_t i=0;i<bindings.size();++i) {
             bindings[i].binding=std::uint32_t(i);bindings[i].descriptorCount=1;
             bindings[i].descriptorType=i==0?VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -276,7 +290,7 @@ struct GpuLighting::Impl {
         VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
         layout_info.bindingCount=std::uint32_t(bindings.size());layout_info.pBindings=bindings.data();
         lighting_check(vkCreateDescriptorSetLayout(device,&layout_info,nullptr,&layout),"lighting descriptor layout");
-        const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,frame_count},{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,5*frame_count}}};
+        const std::array<VkDescriptorPoolSize,2> sizes{{{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,frame_count},{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,6*frame_count}}};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};pool.maxSets=frame_count;
         pool.poolSizeCount=std::uint32_t(sizes.size());pool.pPoolSizes=sizes.data();
         lighting_check(vkCreateDescriptorPool(device,&pool,nullptr,&descriptors),"lighting descriptor pool");
@@ -369,6 +383,8 @@ void GpuLighting::configure(const Scene& scene,const Settings& settings,std::uin
     }
     impl_->wanted=sky_key(scene);impl_->advance_environment();
     data.sky_top=glm::vec4(impl_->active->sky.top,0);data.sky_bottom=glm::vec4(impl_->active->sky.bottom,0);
+    const float angle=glm::radians(std::remainder(scene.environment_rotation,360.f));
+    data.environment={scene.environment_intensity,std::cos(angle),std::sin(angle),impl_->active->sky.map?1.f:0.f};
     data.metadata.y=int(impl_->active->specular->levels);
     std::memcpy(impl_->uniforms[frame]->mapped,&data,sizeof(data));
     lighting_check(vmaFlushAllocation(impl_->allocator,impl_->uniforms[frame]->allocation,0,VK_WHOLE_SIZE),"lighting UBO flush");
@@ -456,7 +472,7 @@ struct LightingTestDevice {
     }
 };
 struct LightingDiagnostic {
-    static constexpr std::uint32_t value_count=180;
+    static constexpr std::uint32_t value_count=192;
     LightingTestDevice& context;
     VkDescriptorSetLayout output_layout{},empty_layout{};VkDescriptorPool descriptors{};VkDescriptorSet output_set{};
     VkShaderModule shader{};VkPipelineLayout layout{};VkPipeline pipeline{};VkCommandPool commands{};VkCommandBuffer command{};VkFence fence{};
@@ -678,6 +694,46 @@ int run_lighting_diagnostic(const std::filesystem::path& spv) {
         for(int i=0;i<8;++i)lighting.configure(scene,settings,std::uint32_t(i%2));
         require_lighting(lighting.environment_bake_count()==final_count,"Steady sky retriggers background bake");
         std::cout<<"PASS two-slot lifetime, async latest-sky coalescing, no per-frame bake, reload failure retention\n";
+        // 新增诊断只提供测试代码，本子任务不运行 Vulkan。主任务可与原照明诊断一起执行。
+        Image<glm::vec3> hdr_image(32,16);
+        for(int y=0;y<hdr_image.height;++y)for(int x=0;x<hdr_image.width;++x)
+            hdr_image.at(x,y)={.15f+float(x)/16,.1f+float(y)/8,2.f+float((x+y)%7)/4};
+        const auto previous_background=diagnostic.run(lighting,1);
+        scene.environment_map=make_environment_map(std::move(hdr_image),"GPU HDR fixture");
+        scene.environment_intensity=.65f;scene.environment_rotation=67;lighting.configure(scene,settings,0);
+        const auto retained_background=diagnostic.run(lighting,1);
+        for(std::size_t i=180;i<192;++i)require_lighting(vec_error(glm::vec3(previous_background[i]),glm::vec3(retained_background[i]))<1e-7f,
+            "In-flight slot background changed before HDR publication");
+        await_sky(lighting,scene,settings);settings.shading=ShadingMode::pbr;settings.energy_compensation=false;
+        lighting.configure(scene,settings,0);const auto hdr_values=diagnostic.run(lighting,0);
+        const auto hdr_ibl=bake_sky(sky_key(scene));float hdr_background_error=0,hdr_ibl_error=0;
+        for(std::uint32_t j=0;j<12;++j) {
+            const float angle=float(j)*2*pi/12;
+            auto d=safe_normalize(glm::vec3(std::cos(angle),-.6f+.6f*float(j%3),std::sin(angle)));
+            if(j==0)d={0,1,0};if(j==1)d={0,-1,0};if(j==2)d=safe_normalize(glm::vec3(1,0,-.00001f));
+            hdr_background_error=std::max(hdr_background_error,vec_error(glm::vec3(hdr_values[180+j]),environment(scene,d)));
+        }
+        for(std::uint32_t j=0;j<16;++j) {
+            const float angle=float(j)*2*pi/16;
+            auto n=safe_normalize(glm::vec3(std::cos(angle),-.95f+1.9f*float(j%5)/4,std::sin(angle)));
+            if(j==0)n={0,1,0};if(j==1)n={0,-1,0};if(j==2)n=safe_normalize(glm::vec3(1,0,-.00001f));
+            const auto v=safe_normalize(n+glm::vec3(.2f,.1f,.15f),n);
+            const float rough=float(j%7)/6,metal=float(j%3)/2,nv=glm::dot(n,v);
+            const glm::vec3 base(.7f,.2f,.08f),f0=glm::mix(glm::vec3(.04f),base,metal);
+            const auto irradiance=sample_ibl_diffuse(hdr_ibl,environment_lookup_direction(n,scene.environment_rotation));
+            const auto radiance=sample_ibl_specular(hdr_ibl,environment_lookup_direction(glm::reflect(-v,n),scene.environment_rotation),rough);
+            const auto ab=sample_brdf_lut(hdr_ibl,nv,rough);
+            const auto expected=(base*(1-metal)*(glm::vec3(1)-schlick_fresnel(f0,nv))*irradiance/pi+radiance*(f0*ab.x+ab.y))*scene.environment_intensity;
+            hdr_ibl_error=std::max(hdr_ibl_error,vec_error(glm::vec3(hdr_values[64+j]),expected));
+        }
+        require_lighting(hdr_background_error<texture_tolerance&&hdr_ibl_error<texture_tolerance,
+            "HDR GPU background/rotated IBL differs from shared CPU latlong filtering");
+        const auto hdr_bakes=lighting.environment_bake_count();scene.environment_rotation=-43;scene.environment_intensity=1.25f;
+        scene.sky_top=glm::vec3(9);++scene.revision;lighting.configure(scene,settings,1);
+        require_lighting(lighting.environment_bake_count()==hdr_bakes,"HDR rotation/intensity/ignored analytic sky triggered rebake");
+        const auto rotated=diagnostic.run(lighting,1);
+        require_lighting(vec_error(glm::vec3(rotated[184]),glm::vec3(hdr_values[184]))>1e-3f,"HDR rotation/intensity has no GPU effect");
+        std::cout<<"PASS HDR raw background + rotated/scaled IBL CPU parity: background="<<hdr_background_error<<"; IBL="<<hdr_ibl_error<<"; no slider rebake\n";
     }
     require_lighting(device.errors.load()==0,"Vulkan validation errors during lighting diagnostic");
     std::cout<<"PASS validation errors="<<device.errors.load()<<'\n';return 0;

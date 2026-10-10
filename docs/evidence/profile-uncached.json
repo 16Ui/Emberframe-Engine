@@ -1,0 +1,33 @@
+{
+  "schema":"emberframe.frame-profile.v1",
+  "serial":116,
+  "scene_revision":1,
+  "completed":true,
+  "width":640,
+  "height":360,
+  "bounds_cached":false,
+  "gpu_ms":1.025824,
+  "cpu_ms":{"fence_wait":0.1002,"ui":0.0275,"prepare":1.6109,"geometry":0.8042,"acquire":0.0095,"record":2.7667,"submit_present":2.0815,"total":6.6133},
+  "allocated_bytes":253667984,
+  "upload_bytes":0,
+  "gpu_scope_semantics":"inclusive; nested scopes must not be summed",
+  "passes":[
+    {"name":"object-cull","depth":0,"cpu_record_ms":0.0271,"gpu_ms":0.009344},
+    {"name":"directional-shadow-depth","depth":0,"cpu_record_ms":0.5545,"gpu_ms":0.045056},
+    {"name":"shadow-moments-SAT-and-sampling","depth":0,"cpu_record_ms":0.0129,"gpu_ms":0.004096},
+    {"name":"light-cull","depth":0,"cpu_record_ms":0.0064,"gpu_ms":0.144384},
+    {"name":"gbuffer-seven-targets","depth":0,"cpu_record_ms":0.7619,"gpu_ms":0.178176},
+    {"name":"screen-AO-compute","depth":0,"cpu_record_ms":0.1173,"gpu_ms":0.19968},
+    {"name":"deferred-lighting","depth":0,"cpu_record_ms":0.0489,"gpu_ms":0.309248},
+    {"name":"indirect-baseline-replace (AO indirect only)","depth":0,"cpu_record_ms":0.062,"gpu_ms":0.028672},
+    {"name":"history-world-position-normal","depth":0,"cpu_record_ms":0.0364,"gpu_ms":0.014336},
+    {"name":"history-material-object-motion","depth":0,"cpu_record_ms":0.0317,"gpu_ms":0.02048},
+    {"name":"effects-history-publish","depth":0,"cpu_record_ms":0.031,"gpu_ms":0.001024},
+    {"name":"visibility-readback","depth":0,"cpu_record_ms":0.0075,"gpu_ms":0.006048},
+    {"name":"host-visibility","depth":0,"cpu_record_ms":0.0019,"gpu_ms":0.001824},
+    {"name":"ready-for-post","depth":0,"cpu_record_ms":0.0006,"gpu_ms":0.000736},
+    {"name":"tone-map-and-present-color","depth":0,"cpu_record_ms":0.0282,"gpu_ms":0.041632},
+    {"name":"editor-UI","depth":0,"cpu_record_ms":0.0187,"gpu_ms":0.00512},
+    {"name":"present-layout","depth":0,"cpu_record_ms":0.0025,"gpu_ms":0.00512}
+  ]
+}

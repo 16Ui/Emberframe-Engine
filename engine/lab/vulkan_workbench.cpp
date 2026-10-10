@@ -5,6 +5,8 @@
 #include "gpu_pipeline_cache.h"
 #include "gpu_shadows.h"
 #include "gpu_effects.h"
+#include "effects_motion.h"
+#include "environment.h"
 #include "gpu_lighting.h"
 #include "gpu_volume.h"
 #include "gpu_scene_resources.h"
@@ -35,6 +37,7 @@
 #include <future>
 #include <numeric>
 #include <map>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 
@@ -46,6 +49,19 @@ constexpr std::uint32_t rsm_face_resolution=128;
 constexpr VkFormat hdr_format=VK_FORMAT_R16G16B16A16_SFLOAT;
 constexpr VkFormat depth_format=VK_FORMAT_D32_SFLOAT;
 constexpr int light_limit=64,cluster_slices=16;
+constexpr std::uint32_t profile_pass_limit=192,profile_queries_per_slot=2+profile_pass_limit*2;
+using ProfileClock=std::chrono::steady_clock;
+double elapsed_ms(ProfileClock::time_point start) {return std::chrono::duration<double,std::milli>(ProfileClock::now()-start).count();}
+glm::vec4 primitive_sphere(const Mesh& mesh,const Primitive& primitive) {
+    if(!primitive.index_count)return glm::vec4(0);
+    if(primitive.first_index>mesh.indices.size()||primitive.index_count>mesh.indices.size()-primitive.first_index)
+        throw std::invalid_argument("Primitive bounds range exceeds indices");
+    glm::vec3 center(0);
+    for(std::uint32_t i=0;i<primitive.index_count;++i)center+=mesh.vertices.at(mesh.indices[primitive.first_index+i]).position;
+    center/=float(primitive.index_count);float radius=0;
+    for(std::uint32_t i=0;i<primitive.index_count;++i)radius=std::max(radius,glm::length(mesh.vertices[mesh.indices[primitive.first_index+i]].position-center));
+    return {center,radius};
+}
 void check(VkResult r,const char* what) {
     if(r!=VK_SUCCESS) throw std::runtime_error(std::string(what)+": VkResult "+std::to_string(r));
 }
@@ -215,6 +231,13 @@ struct VulkanWorkbench::Impl {
     std::vector<glm::mat4> previous_worlds;
     glm::vec3 previous_camera{0};std::uint64_t previous_revision=0,previous_light_key=0;
     bool previous_frame_valid=false;
+    using ObjectKey=std::tuple<std::size_t,std::size_t,std::uint32_t,std::uint32_t>;
+    struct ObjectHistory {glm::mat4 world;std::uint32_t id;};
+    std::map<ObjectKey,ObjectHistory> previous_objects,pending_objects;
+    std::vector<EffectsObjectMotion> object_motion;
+    struct SceneResources;
+    std::weak_ptr<SceneResources> previous_scene_owner;
+    std::uint64_t temporal_epoch=1;
     bool has_scene_output=false; // 不支持实时配置时只显示最近完成的 GPU 结果，不转 CPU。
     DebugView last_scene_debug=DebugView::final_color;float last_scene_exposure=1;
     ImGuiContext* imgui{};bool sdl_initialized=false,imgui_initialized=false,dirty=true,failed=false,bindings_dirty=true,screenshot_supported=false;
@@ -228,7 +251,11 @@ struct VulkanWorkbench::Impl {
     struct CoreAbi {SpirvReflection resources;ShaderIo io;};std::map<std::string,CoreAbi> core_abi;
     VkRenderPass ui_pass{};std::vector<VkFramebuffer> ui_framebuffers;
     VkCommandPool upload_pool{};VkQueryPool query_pool{};std::uint32_t timestamp_bits{};
-    struct GpuMesh {Buffer vertices,indices;};
+    struct GpuMesh {Buffer vertices,indices;std::map<std::pair<std::uint32_t,std::uint32_t>,glm::vec4> bounds;};
+    bool bounds_cache_enabled=true;
+    std::size_t uploaded_this_draw=0;
+    struct ActiveProfileScope {std::size_t index;ProfileClock::time_point start;};
+    std::vector<ActiveProfileScope> profile_scopes;
     struct SceneScratch {Buffer objects,indirect,visibility;};
     struct SceneResources {
         VkDevice device{};Scene snapshot;const Scene* identity{};std::uint64_t revision=0,asset_revision=0;FilterMode filter{};bool ready=false;
@@ -250,6 +277,7 @@ struct VulkanWorkbench::Impl {
         GpuImage reference;Buffer reference_staging;std::uint64_t reference_revision=0;bool reference_upload_pending=false;
         std::shared_ptr<SceneResources> scene_owner;std::size_t object_count=0,opaque_count=0;
         bool submitted=false;std::uint64_t serial=0,shadow_triangles=0;
+        FrameProfile profile;
     };
     std::array<Frame,2> frames;std::size_t frame_index=0;
     // acquire 信号量按 CPU frame 复用；present 信号量按 swapchain image 复用。
@@ -304,10 +332,12 @@ struct VulkanWorkbench::Impl {
     void prepare_scene_upload(PendingScene&);void transfer_scene_upload(PendingScene&);
     const Scene& prepare_baked_scene(const Scene&,const Settings&);
     bool draw(const Scene&,const Camera&,const Settings&,const std::function<void()>&);
-    void render_scene(VkCommandBuffer,const Scene&,const Camera&,const Settings&,const std::vector<glm::mat4>&,Buffer* readback);
+    void render_scene(VkCommandBuffer,const Scene&,const Camera&,const Settings&,const std::vector<glm::mat4>&,Buffer* readback,
+                      const std::function<void(RenderGraph&)>& append_final,VkImage present_image);
     void render_begin(VkCommandBuffer,const std::vector<GpuImage*>&,GpuImage*,bool clear,bool reversed=false);
     void viewport(VkCommandBuffer,std::uint32_t,std::uint32_t);
     void fullscreen(VkCommandBuffer,VkPipeline);
+    void profile_event(VkCommandBuffer,std::string_view,bool);
 };
 
 Buffer VulkanWorkbench::Impl::buffer(VkDeviceSize size,VkBufferUsageFlags usage,bool host) {
@@ -381,6 +411,9 @@ void VulkanWorkbench::Impl::initialize(SDL_Window* win,const std::filesystem::pa
         auto directory=shaders.parent_path();
         // SDL 返回 UTF-8；C++20 char8_t 路径构造保持中文路径语义，不经过系统代码页。
         if(base)directory=std::filesystem::path(std::u8string(base.get(),base.get()+std::strlen(base.get())));
+        // 缓存是机器/驱动相关的用户数据，不写回只读演示包或源仓库。
+        std::unique_ptr<char,decltype(&SDL_free)> pref(SDL_GetPrefPath("16Ui","EmberFrame"),SDL_free);
+        if(pref)directory=std::filesystem::path(std::u8string(pref.get(),pref.get()+std::strlen(pref.get())));
         // 顶点 location5/set4/第七目标改变本 workbench ABI，独立 cache key 拒绝旧接口。
         auto abi="scene-abi-v3-area512-v"+std::to_string(sizeof(Vertex))+"-prt"+std::to_string(offsetof(Vertex,baked_irradiance));
         driver_cache=std::make_unique<GpuPipelineCache>(vk,properties,GpuPipelineCache::default_path(directory/abi,properties));
@@ -399,7 +432,7 @@ void VulkanWorkbench::Impl::initialize(SDL_Window* win,const std::filesystem::pa
         f.rsm_uniform=buffer(stride*6,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,true);
         f.objects=buffer(sizeof(GpuObject),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,true);f.indirect=buffer(2*sizeof(VkDrawIndexedIndirectCommand),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT|VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_SRC_BIT);f.visibility=buffer(f.indirect.size,VK_BUFFER_USAGE_TRANSFER_DST_BIT,true);
     }
-    if(timestamp_bits) {VkQueryPoolCreateInfo qc{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};qc.queryType=VK_QUERY_TYPE_TIMESTAMP;qc.queryCount=4;check(vkCreateQueryPool(vk,&qc,nullptr,&query_pool),"create timestamp queries");}
+    if(timestamp_bits) {VkQueryPoolCreateInfo qc{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};qc.queryType=VK_QUERY_TYPE_TIMESTAMP;qc.queryCount=std::uint32_t(frames.size())*profile_queries_per_slot;check(vkCreateQueryPool(vk,&qc,nullptr,&query_pool),"create timestamp queries");}
     auto sampler=[&](VkFilter filter,VkSamplerMipmapMode mip,VkSamplerAddressMode address,float max_lod,VkSampler& out){
         VkSamplerCreateInfo s{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};s.minFilter=s.magFilter=filter;s.mipmapMode=mip;s.addressModeU=s.addressModeV=s.addressModeW=address;s.maxLod=max_lod;s.borderColor=VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         // VulkanDevice 没有启用 samplerAnisotropy。保持 anisotropyEnable=false。
@@ -436,8 +469,9 @@ void VulkanWorkbench::Impl::update_font_scale() {
     io.Fonts->TexDesiredWidth=std::min(scale>2?8192:4096,int(properties.limits.maxImageDimension2D));
     ImFontConfig config;config.OversampleH=1;config.OversampleV=1;config.PixelSnapH=true;
     // 175% 时栅格化 28px，再以 16 个逻辑点布局；不是先生成 16px 再拉伸。
-    const auto font=std::filesystem::path("C:/Windows/Fonts/msyh.ttc");
-    if(std::filesystem::exists(font))io.Fonts->AddFontFromFileTTF(font.string().c_str(),16*scale,&config,io.Fonts->GetGlyphRangesChineseFull());
+    auto font=shaders.parent_path()/"assets/fonts/DroidSansFallback.ttf";
+    if(!std::filesystem::exists(font))font=std::filesystem::path("C:/Windows/Fonts/msyh.ttc");
+    if(std::filesystem::exists(font)){const auto utf8=font.u8string();io.Fonts->AddFontFromFileTTF(reinterpret_cast<const char*>(utf8.c_str()),16*scale,&config,io.Fonts->GetGlyphRangesChineseFull());}
     if(io.Fonts->Fonts.empty()){config.SizePixels=16*scale;io.Fonts->AddFontDefault(&config);}
     io.FontGlobalScale=1/scale;font_scale=scale;counters.font_raster_scale=scale;
     if(imgui_initialized&&!ImGui_ImplVulkan_CreateFontsTexture())throw std::runtime_error("DPI font texture failed");
@@ -549,7 +583,7 @@ void VulkanWorkbench::Impl::destroy_present_resources() noexcept {
 }
 void VulkanWorkbench::Impl::create_present_resources() {
     auto extent=swapchain->extent();auto format=swapchain->image_format();
-    VkAttachmentDescription a{};a.format=format;a.samples=VK_SAMPLE_COUNT_1_BIT;a.loadOp=VK_ATTACHMENT_LOAD_OP_LOAD;a.storeOp=VK_ATTACHMENT_STORE_OP_STORE;a.stencilLoadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE;a.stencilStoreOp=VK_ATTACHMENT_STORE_OP_DONT_CARE;a.initialLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;a.finalLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    VkAttachmentDescription a{};a.format=format;a.samples=VK_SAMPLE_COUNT_1_BIT;a.loadOp=VK_ATTACHMENT_LOAD_OP_LOAD;a.storeOp=VK_ATTACHMENT_STORE_OP_STORE;a.stencilLoadOp=VK_ATTACHMENT_LOAD_OP_DONT_CARE;a.stencilStoreOp=VK_ATTACHMENT_STORE_OP_DONT_CARE;a.initialLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;a.finalLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkAttachmentReference ref{0,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};VkSubpassDescription sub{};sub.pipelineBindPoint=VK_PIPELINE_BIND_POINT_GRAPHICS;sub.colorAttachmentCount=1;sub.pColorAttachments=&ref;
     VkSubpassDependency dep{};dep.srcSubpass=VK_SUBPASS_EXTERNAL;dep.dstSubpass=0;dep.srcStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;dep.dstStageMask=VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;dep.srcAccessMask=VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;dep.dstAccessMask=VK_ACCESS_COLOR_ATTACHMENT_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     VkRenderPassCreateInfo rc{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};rc.attachmentCount=1;rc.pAttachments=&a;rc.subpassCount=1;rc.pSubpasses=&sub;rc.dependencyCount=1;rc.pDependencies=&dep;check(vkCreateRenderPass(vk,&rc,nullptr,&ui_pass),"UI render pass");
@@ -607,6 +641,9 @@ void VulkanWorkbench::Impl::upload_scene(const Scene& scene,FilterMode filter) {
                 auto nodes=scene.nodes;auto lights=scene.lights;auto name=scene.name;
                 active_scene->snapshot.nodes.swap(nodes);active_scene->snapshot.lights.swap(lights);active_scene->snapshot.name.swap(name);
                 active_scene->snapshot.sky_top=scene.sky_top;active_scene->snapshot.sky_bottom=scene.sky_bottom;
+                active_scene->snapshot.environment_map=scene.environment_map;
+                active_scene->snapshot.environment_intensity=scene.environment_intensity;
+                active_scene->snapshot.environment_rotation=scene.environment_rotation;
                 active_scene->snapshot.revision=active_scene->revision=scene.revision;
             }
             pending_scene.reset();requested_identity=&scene;requested_revision=scene.revision;requested_filter=filter;requested_bake=scene.baked_resources;
@@ -682,6 +719,11 @@ void VulkanWorkbench::Impl::prepare_scene_upload(PendingScene& p) {
             if(p.index==scene.meshes.size()){p.phase=3;p.index=0;continue;}
             const auto& mesh=scene.meshes[p.index];if(mesh.vertices.size()>UINT32_MAX||mesh.indices.size()>UINT32_MAX)throw std::length_error("Mesh too large");
             GpuMesh gpu;auto vertex_bytes=mesh.vertices.size()*sizeof(Vertex),index_bytes=mesh.indices.size()*sizeof(std::uint32_t);
+            // 静态几何发布时计算一次；逐帧仅将局部球变换到世界空间。
+            auto cache_bound=[&](Primitive primitive){auto key=std::pair{primitive.first_index,primitive.index_count};
+                if(!gpu.bounds.contains(key))gpu.bounds.emplace(key,primitive_sphere(mesh,primitive));};
+            if(mesh.primitives.empty())cache_bound({0,std::uint32_t(mesh.indices.size()),0});
+            else for(const auto& primitive:mesh.primitives)cache_bound(primitive);
             gpu.vertices=buffer(vertex_bytes,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT);
             gpu.indices=buffer(index_bytes,VK_BUFFER_USAGE_INDEX_BUFFER_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT);
             if(vertex_bytes)p.tasks.push_back({false,gpu.vertices.handle,reinterpret_cast<const std::byte*>(mesh.vertices.data()),vertex_bytes});
@@ -778,7 +820,7 @@ void VulkanWorkbench::Impl::transfer_scene_upload(PendingScene& p) {
             task.offset+=amount;budget-=amount;if(task.offset==task.bytes)++p.task;
         }
         auto bytes=upload_ring->recorded_bytes();if(!bytes){upload_ring->abort();break;}
-        auto ticket=upload_ring->submit();if(!p.first_ticket)p.first_ticket=ticket;p.last_ticket=ticket;p.submitted+=bytes;
+        auto ticket=upload_ring->submit();if(!p.first_ticket)p.first_ticket=ticket;p.last_ticket=ticket;p.submitted+=bytes;uploaded_this_draw+=bytes;
     }
 }
 void VulkanWorkbench::Impl::prepare_reference(Frame& frame) {
@@ -832,10 +874,30 @@ void VulkanWorkbench::Impl::render_begin(VkCommandBuffer cmd,const std::vector<G
     auto* extent_image=colors.empty()?z:colors[0];VkRenderingInfo ri{VK_STRUCTURE_TYPE_RENDERING_INFO};ri.renderArea.extent={extent_image->w,extent_image->h};ri.layerCount=1;ri.colorAttachmentCount=std::uint32_t(attachments.size());ri.pColorAttachments=attachments.data();ri.pDepthAttachment=z?&depth_attachment:nullptr;vkCmdBeginRendering(cmd,&ri);viewport(cmd,extent_image->w,extent_image->h);
 }
 void VulkanWorkbench::Impl::fullscreen(VkCommandBuffer cmd,VkPipeline p) {vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,p);vkCmdDraw(cmd,3,1,0,0);++counters.draw_calls;}
-void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,const Camera& camera,const Settings& settings,const std::vector<glm::mat4>& worlds,Buffer* readback) {
+void VulkanWorkbench::Impl::profile_event(VkCommandBuffer cmd,std::string_view name,bool begin) {
+    auto& profile=frames[frame_index].profile;
+    if(begin){
+        if(profile.passes.size()>=profile_pass_limit)throw std::length_error("Frame profiler Pass budget exceeded");
+        const auto index=profile.passes.size();
+        profile.passes.push_back({std::string(name),std::uint32_t(profile_scopes.size()),0,-1});
+        profile_scopes.push_back({index,ProfileClock::now()});
+        if(query_pool)vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,query_pool,
+            std::uint32_t(frame_index)*profile_queries_per_slot+2+std::uint32_t(index)*2);
+    }else{
+        if(profile_scopes.empty()||profile.passes[profile_scopes.back().index].name!=name)
+            throw std::logic_error("Unbalanced frame profiling scope");
+        const auto scope=profile_scopes.back();profile_scopes.pop_back();
+        profile.passes[scope.index].cpu_record_ms=elapsed_ms(scope.start);
+        if(query_pool)vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,query_pool,
+            std::uint32_t(frame_index)*profile_queries_per_slot+3+std::uint32_t(scope.index)*2);
+    }
+}
+void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,const Camera& camera,const Settings& settings,const std::vector<glm::mat4>& worlds,Buffer* readback,
+                                       const std::function<void(RenderGraph&)>& append_final,VkImage present_image) {
+    const auto geometry_start=ProfileClock::now();
     const auto& resources=*frames[frame_index].scene_owner;const auto& meshes=resources.meshes;const auto& material_sets=resources.material_sets;const auto& cached_materials=resources.cached_materials;
-    struct Item{std::size_t mesh,material;Primitive primitive;glm::mat4 model;float depth;glm::vec4 sphere;std::size_t indirect_index=0;};std::vector<Item> opaque,blended;
-    auto add=[&](std::size_t index,const glm::mat4& model){
+    struct Item{std::size_t mesh,material;Primitive primitive;glm::mat4 model;float depth;glm::vec4 sphere;std::size_t indirect_index=0;std::size_t node=0;};std::vector<Item> opaque,blended;
+    auto add=[&](std::size_t index,const glm::mat4& model,std::size_t node){
         if(index>=scene.meshes.size())throw std::invalid_argument("Node mesh out of range");
         // 判断轴是否退化要相对于轴长，不能用绝对行列式阈值：毫米级模型的
         // 合法均匀缩放也会得到很小的行列式，误丢弃会造成“导入成功但只有背景”。
@@ -844,22 +906,32 @@ void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,
         const double determinant=glm::determinant(axes);
         if(!std::isfinite(axis_measure)||axis_measure<=0||!std::isfinite(determinant)||std::abs(determinant)<=axis_measure*1e-12)return;
         const auto& mesh=scene.meshes[index];auto push=[&](Primitive p){if(p.index_count==0)return;std::size_t m=p.material<scene.materials.size()?p.material:cached_materials.size()-1;
-            glm::vec3 center(0);for(std::uint32_t i=0;i<p.index_count;++i)center+=mesh.vertices[mesh.indices[p.first_index+i]].position;center/=float(p.index_count);
-            float radius=0;for(std::uint32_t i=0;i<p.index_count;++i)radius=std::max(radius,glm::length(mesh.vertices[mesh.indices[p.first_index+i]].position-center));
+            const auto local_sphere=bounds_cache_enabled?meshes[index].bounds.at({p.first_index,p.index_count}):primitive_sphere(mesh,p);
+            const glm::vec3 center(local_sphere);const float radius=local_sphere.w;
             // Frobenius 范数是最大奇异值的上界，负缩放/剪切也不会把包围球缩小而漏剔。
             float scale=std::sqrt(glm::dot(glm::vec3(model[0]),glm::vec3(model[0]))+glm::dot(glm::vec3(model[1]),glm::vec3(model[1]))+glm::dot(glm::vec3(model[2]),glm::vec3(model[2])));
-            glm::vec3 world_center(model*glm::vec4(center,1));float distance=-(camera.view()*glm::vec4(world_center,1)).z;Item item{index,m,p,model,distance,{world_center,radius*scale}};(cached_materials[m].alpha_mode==2?blended:opaque).push_back(item);};
+            glm::vec3 world_center(model*glm::vec4(center,1));float distance=-(camera.view()*glm::vec4(world_center,1)).z;Item item{index,m,p,model,distance,{world_center,radius*scale}};item.node=node;(cached_materials[m].alpha_mode==2?blended:opaque).push_back(item);};
         if(mesh.primitives.empty())push({0,std::uint32_t(mesh.indices.size()),0});else for(auto p:mesh.primitives)push(p);
     };
-    if(scene.nodes.empty())for(std::size_t i=0;i<scene.meshes.size();++i)add(i,glm::mat4(1));
-    else for(std::size_t i=0;i<scene.nodes.size();++i)if(scene.nodes[i].mesh>=0)add(std::size_t(scene.nodes[i].mesh),worlds[i]);
+    if(scene.nodes.empty())for(std::size_t i=0;i<scene.meshes.size();++i)add(i,glm::mat4(1),i);
+    else for(std::size_t i=0;i<scene.nodes.size();++i)if(scene.nodes[i].mesh>=0)add(std::size_t(scene.nodes[i].mesh),worlds[i],i);
     std::stable_sort(blended.begin(),blended.end(),[](const Item& a,const Item& b){return a.depth>b.depth;});
     auto& frame=frames[frame_index];frame.object_count=opaque.size()+blended.size();frame.opaque_count=opaque.size();
     frame.shadow_triangles=0;if(advanced_shadows->light_index()>=0)for(const auto& item:opaque)frame.shadow_triangles+=std::uint64_t(item.primitive.index_count/3)*advanced_shadows->cascade_count();
     if(frame.object_count*sizeof(GpuObject)>frame.objects.size)throw std::runtime_error("Scene instance topology changed without incrementing revision");
     auto* objects=static_cast<GpuObject*>(frame.objects.mapped);std::size_t object_index=0;
-    for(auto* items:{&opaque,&blended})for(auto& item:*items){item.indirect_index=object_index;objects[object_index++]={item.sphere,{item.primitive.index_count,item.primitive.first_index,0,0}};}
+    object_motion.clear();object_motion.reserve(frame.object_count);pending_objects.clear();
+    for(auto* items:{&opaque,&blended})for(auto& item:*items){
+        item.indirect_index=object_index;objects[object_index++]={item.sphere,{item.primitive.index_count,item.primitive.first_index,0,0}};
+        const ObjectKey key{item.node,item.mesh,item.primitive.first_index,item.primitive.index_count};
+        const auto previous=previous_objects.find(key);
+        const bool known=previous!=previous_objects.end()&&!effect_inputs.invalidate_history;
+        object_motion.push_back(effects_make_object_motion(item.model,known?previous->second.world:item.model,known?previous->second.id:0,known));
+        pending_objects.emplace(key,ObjectHistory{item.model,std::uint32_t(item.indirect_index)});
+    }
+    effect_inputs.object_motion=object_motion;
     check(vmaFlushAllocation(allocator,frame.objects.allocation,0,VK_WHOLE_SIZE),"flush object bounds");
+    frame.profile.cpu_geometry_ms=elapsed_ms(geometry_start);
     auto graphics_bind=[&]{vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,0,1,&frame.descriptors,0,nullptr);std::array<VkDescriptorSet,3> sets{advanced_shadows->descriptor_set(std::uint32_t(frame_index)),lighting->descriptor_set(std::uint32_t(frame_index)),scene_gpu->descriptor_set(std::uint32_t(frame_index))};vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,2,3,sets.data(),0,nullptr);};
     auto draw_items=[&](const std::vector<Item>& items,VkPipeline pipe,bool shadows,int cascade=-1,bool uncull=false,VkDescriptorSet globalOverride=VK_NULL_HANDLE){graphics_bind();if(globalOverride)vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,0,1,&globalOverride,0,nullptr);vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipe);for(const auto& item:items){
         auto& mesh=meshes[item.mesh];VkDeviceSize offset=0;vkCmdBindVertexBuffers(cmd,0,1,&mesh.vertices.handle,&offset);vkCmdBindIndexBuffer(cmd,mesh.indices.handle,0,VK_INDEX_TYPE_UINT32);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,1,1,&material_sets[item.material],0,nullptr);
@@ -877,7 +949,7 @@ void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,
     // 上传已完成才发布；同队列 transfer->fragment barrier 由真实图执行。
     graph.add_resource("scene-distance-grid",true,S::transfer_dst);
     // 模块内部图像的精确转换由模块记录；外层依赖图记录真实生产者/消费者边。
-    graph.add_resource("shadow-filtered",true,S::shader_read);graph.add_resource("screen-ao",true,S::shader_read);graph.add_resource("processed");
+    graph.add_resource("shadow-filtered",true,S::shader_read);graph.add_resource("screen-ao",true,S::shader_read);
     if(volume)graph.add_resource("volume-indirect");
     if(readback)graph.add_resource("readback");
     auto compute_bind=[&](VkPipeline p){vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_COMPUTE,p);vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_COMPUTE,pipeline_layout,0,1,&frame.descriptors,0,nullptr);};
@@ -926,17 +998,25 @@ void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,
             volume_gi->record(cmd,input);
         });
     }
-    std::vector<ResourceUse> fx_uses{{"hdr",A::read,S::shader_read},{"baseline",A::read,S::shader_read},{"position",A::read,S::shader_read},{"normal",A::read,S::shader_read},{"albedo",A::read,S::shader_read},{"emission",A::read,S::shader_read},{"tangent",A::read,S::shader_read},{"meta",A::read,S::shader_read},{"screen-ao",A::read,S::shader_read},{"processed",A::write,S::storage}};if(volume)fx_uses.push_back({"volume-indirect",A::read,S::shader_read});
-    graph.add_pass("GPU-GI-temporal-multilevel-Bloom-NPR",fx_uses,[&]{auto data=effect_data();if(volume){auto output=volume_gi->output(std::uint32_t(frame_index));data.volume_indirect={output.image,output.view,output.layout};}processed=effects->record_post(cmd,data);});
-    if(readback)graph.add_pass("frame-readback",{{*pending_readback==DebugView::albedo?"albedo":"processed",A::read,S::transfer_src},{"readback",A::write,S::transfer_dst}},[&]{VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={std::uint32_t(width),std::uint32_t(height),1};if(*pending_readback==DebugView::albedo)vkCmdCopyImageToBuffer(cmd,gb[2].handle,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback->handle,1,&copy);else {barrier_image(cmd,processed.image,processed.layout,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT);vkCmdCopyImageToBuffer(cmd,processed.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback->handle,1,&copy);barrier_image(cmd,processed.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,processed.layout,VK_IMAGE_ASPECT_COLOR_BIT);}});
+    std::array<ResourceUse,10> fx_uses{{{"position",A::read,S::shader_read},{"normal",A::read,S::shader_read},{"albedo",A::read,S::shader_read},{"emission",A::read,S::shader_read},{"hdr",A::read,S::shader_read},{"baseline",A::read,S::shader_read},{"tangent",A::read,S::shader_read},{"meta",A::read,S::shader_read},{volume?"volume-indirect":"",A::read,S::shader_read},{"screen-ao",A::read,S::shader_read}}};
+    effects->add_post_passes(graph,cmd,effect_inputs,[&]{auto data=effect_data();if(volume){auto output=volume_gi->output(std::uint32_t(frame_index));data.volume_indirect={output.image,output.view,output.layout};}return data;},fx_uses,processed);
+    const std::string processed_resource(effects->post_output_resource());
+    if(readback)graph.add_pass("frame-readback",{{*pending_readback==DebugView::albedo?"albedo":processed_resource,A::read,S::transfer_src},{"readback",A::write,S::transfer_dst}},[&]{VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={std::uint32_t(width),std::uint32_t(height),1};if(*pending_readback==DebugView::albedo)vkCmdCopyImageToBuffer(cmd,gb[2].handle,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback->handle,1,&copy);else vkCmdCopyImageToBuffer(cmd,processed.image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback->handle,1,&copy);});
     graph.add_pass("visibility-readback",{{"indirect",A::read,S::transfer_src},{"visibility",A::write,S::transfer_dst}},[&]{if(frame.object_count){VkBufferCopy copy{0,0,frame.object_count*2*sizeof(VkDrawIndexedIndirectCommand)};vkCmdCopyBuffer(cmd,frame.indirect.handle,frame.visibility.handle,1,&copy);}});
     std::vector<ResourceUse> host{{"visibility",A::read,S::host_read}};if(readback)host.push_back({"readback",A::read,S::host_read});graph.add_pass("host-visibility",host,[]{},true);
-    graph.add_pass("ready-for-post",{{"processed",A::read,S::shader_read}},[]{},true,readback?std::vector<std::string>{"frame-readback"}:std::vector<std::string>{});
+    graph.add_pass("ready-for-post",{{processed_resource,A::read,S::shader_read}},[]{},true,readback?std::vector<std::string>{"frame-readback"}:std::vector<std::string>{});
+    if(append_final)append_final(graph);
     auto plan=graph.compile();last_graph=plan;counters.graph_serial=serial+1;counters.graph_revision=resources.revision;counters.graph_submitted=false;counters.graph_passes=plan.order.size();counters.graph_barriers=plan.barriers.size();
     // The compiled graph drives the actual Vulkan image layouts AND buffer memory hazards.
     // Whole resources / one graphics queue; no alias allocation or async queue claims.
     graph.execute(plan,[&](const ResourceBarrier& b){
-        if(auto it=images.find(b.resource);it!=images.end()){
+        if(b.resource=="swapchain-color"){
+            auto layout=[](ResourceState s){return s==ResourceState::undefined?VK_IMAGE_LAYOUT_UNDEFINED:
+                s==ResourceState::present?VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;};
+            barrier_image(cmd,present_image,layout(b.before),layout(b.after),VK_IMAGE_ASPECT_COLOR_BIT);
+        }else if(effects->record_graph_barrier(cmd,b)){
+            // 内部 ping-pong/history 图像也由这份图驱动真实转换。
+        }else if(auto it=images.find(b.resource);it!=images.end()){
             auto& img=*it->second;VkImageLayout layout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             if(b.after==S::color_attachment)layout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             else if(b.after==S::depth_attachment)layout=VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -949,7 +1029,7 @@ void VulkanWorkbench::Impl::render_scene(VkCommandBuffer cmd,const Scene& scene,
             barrier.dstAccessMask=b.after==S::host_read?VK_ACCESS_2_HOST_READ_BIT:VK_ACCESS_2_MEMORY_READ_BIT|VK_ACCESS_2_MEMORY_WRITE_BIT;
             VkDependencyInfo info{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};info.memoryBarrierCount=1;info.pMemoryBarriers=&barrier;vkCmdPipelineBarrier2(cmd,&info);
         }
-    });
+    },[&](std::string_view name,bool begin){profile_event(cmd,name,begin);});
 }
 
 const Scene& VulkanWorkbench::Impl::prepare_baked_scene(const Scene& scene,const Settings& settings) {
@@ -1012,19 +1092,33 @@ const Scene& VulkanWorkbench::Impl::prepare_baked_scene(const Scene& scene,const
 }
 
 bool VulkanWorkbench::Impl::draw(const Scene& source_scene,const Camera& camera,const Settings& settings,const std::function<void()>& ui) {
+    const auto frame_start=ProfileClock::now();
     if(failed)throw std::runtime_error("VulkanWorkbench is faulted; recreate after the previous GPU failure");
     int drawable_w=0,drawable_h=0;SDL_Vulkan_GetDrawableSize(window,&drawable_w,&drawable_h);
     if(drawable_w<=0||drawable_h<=0||(SDL_GetWindowFlags(window)&SDL_WINDOW_MINIMIZED))return false;
     if((dirty||!swapchain)&&!recreate_swapchain())return false;
-    auto& frame=frames[frame_index];check(vkWaitForFences(vk,1,&frame.fence,VK_TRUE,UINT64_MAX),"wait frame");
+    auto& frame=frames[frame_index];const auto wait_start=ProfileClock::now();
+    check(vkWaitForFences(vk,1,&frame.fence,VK_TRUE,UINT64_MAX),"wait frame");const auto wait_ms=elapsed_ms(wait_start);
     if(frame.submitted&&frame.object_count){check(vmaInvalidateAllocation(allocator,frame.visibility.allocation,0,VK_WHOLE_SIZE),"read object visibility");auto* commands=static_cast<const VkDrawIndexedIndirectCommand*>(frame.visibility.mapped);counters.candidate_objects=frame.object_count;counters.visible_objects=0;counters.triangles=0;
         for(std::size_t i=0;i<frame.object_count;++i){counters.visible_objects+=commands[i].instanceCount;counters.triangles+=commands[i].indexCount/3*commands[i].instanceCount;}counters.triangles+=frame.shadow_triangles;
     }
-    if(frame.submitted&&query_pool){std::array<std::uint64_t,2> times{};auto r=vkGetQueryPoolResults(vk,query_pool,std::uint32_t(frame_index*2),2,sizeof(times),times.data(),sizeof(std::uint64_t),VK_QUERY_RESULT_64_BIT);
-        if(r==VK_SUCCESS){counters.gpu_ms=double(timestamp_delta(times[0],times[1],timestamp_bits))*double(properties.limits.timestampPeriod)*1e-6;counters.gpu_sample_serial=frame.serial;}else if(r!=VK_NOT_READY)check(r,"read timestamps");}
+    if(frame.submitted){
+        frame.profile.completed=true;
+        if(query_pool){std::vector<std::uint64_t> times(2+frame.profile.passes.size()*2);
+            const auto r=vkGetQueryPoolResults(vk,query_pool,std::uint32_t(frame_index)*profile_queries_per_slot,
+                std::uint32_t(times.size()),times.size()*sizeof(std::uint64_t),times.data(),sizeof(std::uint64_t),VK_QUERY_RESULT_64_BIT);
+            if(r==VK_SUCCESS){decode_frame_timestamps(frame.profile,times,timestamp_bits,properties.limits.timestampPeriod);
+                counters.gpu_ms=frame.profile.gpu_ms;counters.gpu_sample_serial=frame.serial;}
+            else if(r!=VK_NOT_READY)check(r,"read frame profile timestamps");
+        }
+        counters.completed_profile=frame.profile;
+    }
+    frame.profile={};frame.profile.cpu_wait_ms=wait_ms;frame.profile.bounds_cached=bounds_cache_enabled;profile_scopes.clear();
     frame.scene_owner.reset(); // The frame fence has retired every use of its old bundle.
+    const auto ui_start=ProfileClock::now();
     ImGui::SetCurrentContext(imgui);update_font_scale();ImGui_ImplVulkan_NewFrame();ImGui_ImplSDL2_NewFrame();ImGui::NewFrame();
     try{if(ui)ui();}catch(...){ImGui::EndFrame();throw;}ImGui::Render();
+    frame.profile.cpu_ui_ms=elapsed_ms(ui_start);const auto prepare_start=ProfileClock::now();uploaded_this_draw=0;
     const bool reference_path=cpu_path(settings.path);
     const bool blocked=!reference_path&&!VulkanWorkbench::unsupported_modes(source_scene,settings).empty();
     const bool presentation_only=reference_path||blocked;
@@ -1039,6 +1133,7 @@ bool VulkanWorkbench::Impl::draw(const Scene& source_scene,const Camera& camera,
     prepare_reference(frame);if(!presentation_only)upload_scene(scene,settings.filter);
     frame.scene_owner=presentation_only?placeholder:(active_scene?active_scene:placeholder);auto& resources=*frame.scene_owner;
     const bool current_scene=resources.ready&&resources.identity==&scene&&resources.revision==scene.revision&&resources.bake==scene.baked_resources;
+    counters.displayedAssetRevision=resources.ready?resources.asset_revision:0;
     const Scene& visible_scene=current_scene?scene:resources.snapshot;
     const bool display_ready=!presentation_only&&resources.ready&&VulkanWorkbench::unsupported_modes(visible_scene,settings).empty();
     const bool keep_gpu_output=blocked&&has_scene_output;
@@ -1085,11 +1180,12 @@ bool VulkanWorkbench::Impl::draw(const Scene& source_scene,const Camera& camera,
         ? advanced_shadows->uniform(std::uint32_t(frame_index)).light_vp[0]:light_projection(visible_scene,worlds,globals.misc.x);
     // 相机正常移动依靠重投影；几何/灯光跳变则丢弃历史，防止把旧遮挡拖到新位置。
     std::uint64_t light_key=1469598103934665603ull;auto hash=[&](const auto& value){const auto* p=reinterpret_cast<const unsigned char*>(&value);for(std::size_t i=0;i<sizeof(value);++i){light_key^=p[i];light_key*=1099511628211ull;}};
-    hash(visible_scene.sky_top);hash(visible_scene.sky_bottom);hash(settings.environment_diffuse);hash(settings.sdf_shadows);hash(settings.sdf_softness);for(const auto& light:visible_scene.lights){hash(light.kind);hash(light.position);hash(light.direction);hash(light.color);hash(light.intensity);hash(light.range);hash(light.size);}
-    bool transforms_changed=worlds.size()!=previous_worlds.size();if(!transforms_changed&&!worlds.empty())transforms_changed=std::memcmp(worlds.data(),previous_worlds.data(),worlds.size()*sizeof(glm::mat4))!=0;
-    effect_inputs={};effect_inputs.width=std::uint32_t(width);effect_inputs.height=std::uint32_t(height);effect_inputs.frame_slot=std::uint32_t(frame_index);effect_inputs.camera=camera;effect_inputs.settings=settings;effect_inputs.scene_revision=resources.revision;effect_inputs.sky_top=visible_scene.sky_top;effect_inputs.sky_bottom=visible_scene.sky_bottom;
+    hash(visible_scene.sky_top);hash(visible_scene.sky_bottom);hash(environment_fingerprint(visible_scene));hash(settings.environment_diffuse);hash(settings.sdf_shadows);hash(settings.sdf_softness);for(const auto& light:visible_scene.lights){hash(light.kind);hash(light.position);hash(light.direction);hash(light.color);hash(light.intensity);hash(light.range);hash(light.size);}
+    const bool assets_changed=previous_scene_owner.lock()!=frame.scene_owner;
+    if(assets_changed)++temporal_epoch;
+    effect_inputs={};effect_inputs.width=std::uint32_t(width);effect_inputs.height=std::uint32_t(height);effect_inputs.frame_slot=std::uint32_t(frame_index);effect_inputs.camera=camera;effect_inputs.settings=settings;effect_inputs.scene_revision=temporal_epoch;effect_inputs.sky_top=visible_scene.sky_top;effect_inputs.sky_bottom=visible_scene.sky_bottom;
     effect_inputs.current_vp=globals.vp;effect_inputs.previous_vp=previous_frame_valid?previous_vp:globals.vp;effect_inputs.current_jitter=jitter;effect_inputs.previous_jitter=previous_jitter;
-    effect_inputs.invalidate_history=!previous_frame_valid||previous_revision!=resources.revision||transforms_changed||light_key!=previous_light_key||glm::length(camera.position-previous_camera)>std::max(1.f,camera.far_plane*.1f);
+    effect_inputs.invalidate_history=!previous_frame_valid||assets_changed||light_key!=previous_light_key||glm::length(camera.position-previous_camera)>std::max(1.f,camera.far_plane*.1f);
     std::memcpy(frame.uniform.mapped,&globals,sizeof(globals));check(vmaFlushAllocation(allocator,frame.uniform.allocation,0,VK_WHOLE_SIZE),"flush globals");
     if(display_ready&&needs_volume) {
         const auto alignment=properties.limits.minUniformBufferOffsetAlignment;
@@ -1104,50 +1200,78 @@ bool VulkanWorkbench::Impl::draw(const Scene& source_scene,const Camera& camera,
     Buffer scene_readback;if(pending_readback&&display_ready&&current_scene&&counters.scene_resources_ready&&!counters.uploadPending&&counters.uploadError.empty()&&lighting->environment_ready())scene_readback=buffer(VkDeviceSize(width)*height*(*pending_readback==DebugView::albedo?8:16),VK_BUFFER_USAGE_TRANSFER_DST_BIT,true);
     if(capture&&(!screenshot_supported||!bmp_format(swapchain->image_format()))){counters.screenshot_error="Swapchain does not support 8-bit screenshot readback";pending_screenshot.clear();capture=false;}
     if(capture)readback=buffer(VkDeviceSize(extent.width)*extent.height*4,VK_BUFFER_USAGE_TRANSFER_DST_BIT,true);
+    frame.profile.cpu_prepare_ms=elapsed_ms(prepare_start);frame.profile.width=width;frame.profile.height=height;
+    frame.profile.scene_revision=resources.revision;frame.profile.upload_bytes=uploaded_this_draw;
+    const auto acquire_start=ProfileClock::now();
     std::uint32_t index=0;auto acquired=vkAcquireNextImageKHR(vk,swapchain->swapchain(),UINT64_MAX,frame.acquired,VK_NULL_HANDLE,&index);
+    frame.profile.cpu_acquire_ms=elapsed_ms(acquire_start);
     if(acquired==VK_ERROR_OUT_OF_DATE_KHR){dirty=true;return false;}if(acquired==VK_SUBOPTIMAL_KHR)dirty=true;else check(acquired,"acquire image");
     // Acquiring consumes external state. A later recording/submission exception faults the
     // workbench, so we never re-wait an unsignalled fence or reuse a signalled acquire sem.
     try {
+        const auto record_start=ProfileClock::now();
         check(vkResetCommandPool(vk,frame.pool,0),"reset frame commands");VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};bi.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;check(vkBeginCommandBuffer(frame.command,&bi),"begin frame");auto cmd=frame.command;
-        if(query_pool){vkCmdResetQueryPool(cmd,query_pool,std::uint32_t(frame_index*2),2);vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,query_pool,std::uint32_t(frame_index*2));}
+        if(query_pool){vkCmdResetQueryPool(cmd,query_pool,std::uint32_t(frame_index)*profile_queries_per_slot,profile_queries_per_slot);vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,query_pool,std::uint32_t(frame_index)*profile_queries_per_slot);}
         record_reference_upload(cmd,frame);
         counters.draw_calls=0;vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,0,1,&frame.descriptors,0,nullptr);
-        if(display_ready){render_scene(cmd,visible_scene,camera,settings,worlds,scene_readback.handle?&scene_readback:nullptr);has_scene_output=true;last_scene_debug=settings.debug;last_scene_exposure=globals.sky_bottom_exposure.w;const auto& diagnostic=effects->diagnostics();counters.effect_dispatches=diagnostic.dispatches;counters.effect_passes=diagnostic.pass_names;counters.temporal_history_valid=diagnostic.history_valid;}
-        else {frame.object_count=0;counters.candidate_objects=counters.visible_objects=counters.triangles=0;counters.graph_passes=counters.graph_barriers=0;counters.graph_submitted=false;counters.effect_dispatches=0;counters.effect_passes.clear();counters.temporal_history_valid=false;}
-        // 后处理使用独立 descriptor set：不修改已经参与几何录制的 scene set。
-        if(display_ready||keep_gpu_output){VkDescriptorImageInfo sampled{presentation_sampler,processed.view,processed.layout};VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};write.dstSet=frame.post_descriptors;write.dstBinding=8;write.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;write.descriptorCount=1;write.pImageInfo=&sampled;vkUpdateDescriptorSets(vk,1,&write,0,nullptr);}
-        vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,0,1,&frame.post_descriptors,0,nullptr);
-        barrier_image(cmd,swapchain->images()[index],VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT);
-        VkRenderingAttachmentInfo output{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};output.imageView=swapchain->image_views()[index];output.imageLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;output.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;output.storeOp=VK_ATTACHMENT_STORE_OP_STORE;output.clearValue.color.float32[3]=1;
-        VkRenderingInfo ri{VK_STRUCTURE_TYPE_RENDERING_INFO};ri.renderArea.extent=extent;ri.layerCount=1;ri.colorAttachmentCount=1;ri.pColorAttachments=&output;vkCmdBeginRendering(cmd,&ri);
-        auto box=letterbox(reference_path?frame.reference.w:std::uint32_t(width),reference_path?frame.reference.h:std::uint32_t(height),extent,viewport_inset_left,viewport_inset_right,viewport_inset_top,viewport_inset_bottom);
-        if(box.extent.width&&box.extent.height){VkViewport vp{float(box.offset.x),float(box.offset.y),float(box.extent.width),float(box.extent.height),0,1};vkCmdSetViewport(cmd,0,1,&vp);vkCmdSetScissor(cmd,0,1,&box);fullscreen(cmd,post_pipeline);}vkCmdEndRendering(cmd);
-        VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};rp.renderPass=ui_pass;rp.framebuffer=ui_framebuffers[index];rp.renderArea.extent=extent;vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(),cmd);vkCmdEndRenderPass(cmd);
-        if(query_pool)vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,query_pool,std::uint32_t(frame_index*2+1));
+        // 最终颜色、UI 和 PRESENT 布局也是实际图节点；它们不再游离于场景图之外。
+        auto record_tone=[&]{
+            if(display_ready||keep_gpu_output){VkDescriptorImageInfo sampled{presentation_sampler,processed.view,processed.layout};VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};write.dstSet=frame.post_descriptors;write.dstBinding=8;write.descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;write.descriptorCount=1;write.pImageInfo=&sampled;vkUpdateDescriptorSets(vk,1,&write,0,nullptr);}
+            vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,pipeline_layout,0,1,&frame.post_descriptors,0,nullptr);
+            VkRenderingAttachmentInfo output{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};output.imageView=swapchain->image_views()[index];output.imageLayout=VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;output.loadOp=VK_ATTACHMENT_LOAD_OP_CLEAR;output.storeOp=VK_ATTACHMENT_STORE_OP_STORE;output.clearValue.color.float32[3]=1;
+            VkRenderingInfo ri{VK_STRUCTURE_TYPE_RENDERING_INFO};ri.renderArea.extent=extent;ri.layerCount=1;ri.colorAttachmentCount=1;ri.pColorAttachments=&output;vkCmdBeginRendering(cmd,&ri);
+            auto box=letterbox(reference_path?frame.reference.w:std::uint32_t(width),reference_path?frame.reference.h:std::uint32_t(height),extent,viewport_inset_left,viewport_inset_right,viewport_inset_top,viewport_inset_bottom);
+            if(box.extent.width&&box.extent.height){VkViewport vp{float(box.offset.x),float(box.offset.y),float(box.extent.width),float(box.extent.height),0,1};vkCmdSetViewport(cmd,0,1,&vp);vkCmdSetScissor(cmd,0,1,&box);fullscreen(cmd,post_pipeline);}vkCmdEndRendering(cmd);
+        };
+        auto record_ui=[&]{VkRenderPassBeginInfo rp{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};rp.renderPass=ui_pass;rp.framebuffer=ui_framebuffers[index];rp.renderArea.extent=extent;vkCmdBeginRenderPass(cmd,&rp,VK_SUBPASS_CONTENTS_INLINE);ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(),cmd);vkCmdEndRenderPass(cmd);};
+        auto append_final=[&](RenderGraph& graph){
+            using A=ResourceAccess;using S=ResourceState;
+            // 本帧 CLEAR 丢弃旧像素；不导入上一轮呈现的内容，外部图像句柄仍由 Swapchain 拥有。
+            graph.add_resource("swapchain-color",false,S::undefined);
+            if(!display_ready)graph.add_resource("presentation-input",true,S::shader_read);
+            graph.add_pass("tone-map-and-present-color",{{display_ready?std::string(effects->post_output_resource()):"presentation-input",A::read,S::shader_read},{"swapchain-color",A::write,S::color_attachment}},record_tone);
+            graph.add_pass("editor-UI",{{"swapchain-color",A::read_write,S::color_attachment}},record_ui);
+            graph.add_pass("present-layout",{{"swapchain-color",A::read,S::present}},[]{},true);
+            graph.export_resource("swapchain-color");
+        };
+        if(display_ready){render_scene(cmd,visible_scene,camera,settings,worlds,scene_readback.handle?&scene_readback:nullptr,append_final,swapchain->images()[index]);has_scene_output=true;last_scene_debug=settings.debug;last_scene_exposure=globals.sky_bottom_exposure.w;const auto& diagnostic=effects->diagnostics();counters.effect_dispatches=diagnostic.dispatches;counters.effect_passes=diagnostic.pass_names;counters.temporal_history_valid=diagnostic.history_valid;}
+        else {
+            frame.object_count=0;counters.candidate_objects=counters.visible_objects=counters.triangles=0;counters.graph_submitted=false;counters.effect_dispatches=0;counters.effect_passes.clear();counters.temporal_history_valid=false;
+            RenderGraph presentation;append_final(presentation);const auto plan=presentation.compile();last_graph=plan;
+            counters.graph_serial=serial+1;counters.graph_revision=resources.revision;counters.graph_passes=plan.order.size();counters.graph_barriers=plan.barriers.size();
+            presentation.execute(plan,[&](const ResourceBarrier& b){if(b.resource=="swapchain-color"){
+                auto layout=[](ResourceState s){return s==ResourceState::undefined?VK_IMAGE_LAYOUT_UNDEFINED:s==ResourceState::present?VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;};
+                barrier_image(cmd,swapchain->images()[index],layout(b.before),layout(b.after),VK_IMAGE_ASPECT_COLOR_BIT);}
+            },[&](std::string_view name,bool begin){profile_event(cmd,name,begin);});
+        }
+        if(query_pool)vkCmdWriteTimestamp2(cmd,VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,query_pool,std::uint32_t(frame_index)*profile_queries_per_slot+1);
         if(capture){barrier_image(cmd,swapchain->images()[index],VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT);VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={extent.width,extent.height,1};vkCmdCopyImageToBuffer(cmd,swapchain->images()[index],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,readback.handle,1,&copy);
             VkMemoryBarrier2 host{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};host.srcStageMask=VK_PIPELINE_STAGE_2_TRANSFER_BIT;host.srcAccessMask=VK_ACCESS_2_TRANSFER_WRITE_BIT;host.dstStageMask=VK_PIPELINE_STAGE_2_HOST_BIT;host.dstAccessMask=VK_ACCESS_2_HOST_READ_BIT;VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};dep.memoryBarrierCount=1;dep.pMemoryBarriers=&host;vkCmdPipelineBarrier2(cmd,&dep);
             barrier_image(cmd,swapchain->images()[index],VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_IMAGE_ASPECT_COLOR_BIT);}
         check(vkEndCommandBuffer(cmd),"end frame");
+        frame.profile.cpu_record_ms=elapsed_ms(record_start);const auto submit_start=ProfileClock::now();
         VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};wait.semaphore=frame.acquired;wait.stageMask=VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};signal.semaphore=presented[index];signal.stageMask=VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
         VkCommandBufferSubmitInfo cb{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};cb.commandBuffer=cmd;
         VkSubmitInfo2 submit{VK_STRUCTURE_TYPE_SUBMIT_INFO_2};submit.waitSemaphoreInfoCount=1;submit.pWaitSemaphoreInfos=&wait;submit.commandBufferInfoCount=1;submit.pCommandBufferInfos=&cb;submit.signalSemaphoreInfoCount=1;submit.pSignalSemaphoreInfos=&signal;
         // Fence reset only immediately before a real submission; OUT_OF_DATE never resets it.
         check(vkResetFences(vk,1,&frame.fence),"reset frame fence");check(vkQueueSubmit2(device->graphics_queue(),1,&submit,frame.fence),"submit frame");frame.submitted=true;
-        if(display_ready)counters.graph_submitted=true;
+        counters.graph_submitted=true;
         VkSwapchainKHR chain=swapchain->swapchain();VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};present.waitSemaphoreCount=1;present.pWaitSemaphores=&presented[index];present.swapchainCount=1;present.pSwapchains=&chain;present.pImageIndices=&index;
         auto result=vkQueuePresentKHR(device->present_queue(),&present);if(result==VK_ERROR_OUT_OF_DATE_KHR||result==VK_SUBOPTIMAL_KHR)dirty=true;else check(result,"present frame");
         ++serial;
         frame.serial=serial;
+        frame.profile.serial=serial;frame.profile.cpu_submit_ms=elapsed_ms(submit_start);
+        frame.profile.cpu_total_ms=elapsed_ms(frame_start);
         previous_frame_valid=display_ready;previous_vp=globals.vp;previous_jitter=jitter;previous_worlds=std::move(worlds);previous_revision=resources.revision;previous_light_key=light_key;previous_camera=camera.position;
+        previous_scene_owner=frame.scene_owner;if(display_ready)previous_objects=std::move(pending_objects);else previous_objects.clear();
         if(scene_readback.handle){check(vkWaitForFences(vk,1,&frame.fence,VK_TRUE,UINT64_MAX),"wait frame readback");check(vmaInvalidateAllocation(allocator,scene_readback.allocation,0,VK_WHOLE_SIZE),"invalidate frame readback");
             FrameReadback completed;completed.requested=*pending_readback;completed.path=settings.path;completed.serial=serial;completed.image.reset(width,height);auto* source=static_cast<const std::uint16_t*>(scene_readback.mapped);
             for(std::size_t i=0;i<completed.image.pixels.size();++i){if(*pending_readback==DebugView::albedo)completed.image.pixels[i]={from_half(source[i*4]),from_half(source[i*4+1]),from_half(source[i*4+2])};else {auto* rgba=static_cast<const float*>(scene_readback.mapped);completed.image.pixels[i]={rgba[i*4],rgba[i*4+1],rgba[i*4+2]};}}completed_readback=std::move(completed);pending_readback.reset();
         }
         if(capture){check(vkWaitForFences(vk,1,&frame.fence,VK_TRUE,UINT64_MAX),"wait screenshot");check(vmaInvalidateAllocation(allocator,readback.allocation,0,VK_WHOLE_SIZE),"invalidate screenshot");auto path=std::exchange(pending_screenshot,{});
             try{auto format=swapchain->image_format();write_bmp(path,int(extent.width),int(extent.height),static_cast<const std::uint8_t*>(readback.mapped),format==VK_FORMAT_B8G8R8A8_SRGB||format==VK_FORMAT_B8G8R8A8_UNORM);counters.last_screenshot=path;counters.screenshot_error.clear();}catch(const std::exception& e){counters.screenshot_error=e.what();}}
-        frame_index=(frame_index+1)%frames.size();VmaTotalStatistics statistics{};vmaCalculateStatistics(allocator,&statistics);counters.allocated_bytes=std::size_t(statistics.total.statistics.allocationBytes);
+        frame_index=(frame_index+1)%frames.size();VmaTotalStatistics statistics{};vmaCalculateStatistics(allocator,&statistics);counters.allocated_bytes=std::size_t(statistics.total.statistics.allocationBytes);frame.profile.allocated_bytes=counters.allocated_bytes;
         return result!=VK_ERROR_OUT_OF_DATE_KHR;
     }catch(...){failed=true;vkDeviceWaitIdle(vk);throw;}
 }
@@ -1186,6 +1310,7 @@ void VulkanWorkbench::set_viewport_insets(std::uint32_t left,std::uint32_t right
     impl_->viewport_inset_left=left;impl_->viewport_inset_right=right;impl_->viewport_inset_top=top;impl_->viewport_inset_bottom=bottom;
 }
 void VulkanWorkbench::set_upload_budget(std::size_t bytes){if(bytes<65536||bytes>12*1024*1024)throw std::invalid_argument("Upload budget must be 64 KiB..12 MiB");impl_->counters.uploadBudget=bytes&~std::size_t(3);}
+void VulkanWorkbench::set_bounds_cache_enabled(bool enabled) noexcept {impl_->bounds_cache_enabled=enabled;}
 bool VulkanWorkbench::draw(const Scene& s,const Camera& c,const Settings& settings,const std::function<void()>& ui){return impl_->draw(s,c,settings,ui);}
 const WorkbenchStats& VulkanWorkbench::stats() const{return impl_->counters;}
 std::uint64_t VulkanWorkbench::max_render_tiles() const noexcept{return impl_->properties.limits.maxStorageBufferRange/(cluster_slices*65*sizeof(std::uint32_t));}

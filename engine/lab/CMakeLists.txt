@@ -1,5 +1,5 @@
 add_library(emberframe_lab STATIC
-  geometry.cpp mesh_lod.cpp shading.cpp shadow_gi.cpp postprocess.cpp systems.cpp shader_assets.cpp reference_renderer.cpp temporal_session.cpp visual_experiments.cpp diagnostics.cpp scene_resources.cpp scene_geometry.cpp resume_demo.cpp editor_assets.cpp editor_lights.cpp)
+  geometry.cpp mesh_lod.cpp shading.cpp environment.cpp showcase.cpp shadow_gi.cpp postprocess.cpp systems.cpp shader_assets.cpp reference_renderer.cpp temporal_session.cpp visual_experiments.cpp diagnostics.cpp frame_profile.cpp scene_resources.cpp scene_geometry.cpp resume_demo.cpp editor_assets.cpp editor_lights.cpp)
 target_compile_features(emberframe_lab PUBLIC cxx_std_20)
 target_include_directories(emberframe_lab PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}/engine")
 target_link_libraries(emberframe_lab PUBLIC glm fastgltf::fastgltf stb_image)
@@ -10,7 +10,7 @@ if(MSVC)
 endif()
 
 add_library(emberframe_lab_checks STATIC
-  geometry_tests.cpp mesh_lod_tests.cpp shading_tests.cpp shadow_gi_tests.cpp postprocess_tests.cpp systems_tests.cpp temporal_session_tests.cpp visual_experiments.tests.cpp shader_assets_tests.cpp diagnostics_tests.cpp scene_resources_tests.cpp scene_geometry_tests.cpp resume_demo_tests.cpp editor_assets_tests.cpp editor_lights_tests.cpp editor_gizmo_tests.cpp)
+  geometry_tests.cpp mesh_lod_tests.cpp shading_tests.cpp showcase_tests.cpp shadow_gi_tests.cpp postprocess_tests.cpp systems_tests.cpp temporal_session_tests.cpp visual_experiments.tests.cpp shader_assets_tests.cpp diagnostics_tests.cpp scene_resources_tests.cpp scene_geometry_tests.cpp resume_demo_tests.cpp editor_assets_tests.cpp editor_lights_tests.cpp editor_gizmo_tests.cpp)
 target_compile_features(emberframe_lab_checks PUBLIC cxx_std_20)
 target_link_libraries(emberframe_lab_checks PUBLIC emberframe_lab)
 
@@ -24,7 +24,8 @@ if(WIN32)
   endif()
 endif()
 target_link_libraries(emberframe_lab_tests PRIVATE emberframe_lab_checks)
-foreach(group geometry mesh_lod shading shadow_gi postprocess systems reference temporal_session visual_experiments shader_assets diagnostics scene_resources scene_geometry resume_demo editor_assets editor_lights editor_gizmo)
+target_link_libraries(emberframe_lab_tests PRIVATE Vulkan::Vulkan vma)
+foreach(group geometry mesh_lod shading shadow_gi postprocess systems reference temporal_session visual_experiments shader_assets diagnostics frame_profile showcase effects_motion scene_resources scene_geometry resume_demo editor_assets editor_lights editor_gizmo)
   add_test(NAME lab_${group} COMMAND emberframe_lab_tests ${group})
   set_tests_properties(lab_${group} PROPERTIES TIMEOUT 180)
 endforeach()
@@ -56,6 +57,7 @@ set_property(TARGET emberframe_workbench PROPERTY VS_DEBUGGER_WORKING_DIRECTORY 
 add_custom_command(TARGET emberframe_workbench POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:emberframe_workbench>/assets/branding"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PROJECT_SOURCE_DIR}/assets/branding/emberframe-icon.png" "$<TARGET_FILE_DIR:emberframe_workbench>/assets/branding/emberframe-icon.png"
+  COMMAND ${CMAKE_COMMAND} -E copy_directory "${PROJECT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:emberframe_workbench>/assets/fonts"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_BINARY_DIR}/workbench_shaders" "$<TARGET_FILE_DIR:emberframe_workbench>/lab_shaders"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:emberframe_workbench> $<TARGET_FILE_DIR:emberframe_workbench>
   COMMAND_EXPAND_LISTS)

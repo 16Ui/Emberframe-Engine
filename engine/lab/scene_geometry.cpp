@@ -1,4 +1,5 @@
 #include "scene_geometry.h"
+#include "environment.h"
 #include <bit>
 #include <map>
 #include <utility>
@@ -68,6 +69,7 @@ std::uint64_t texture_descriptor_fingerprint(const Scene& scene,std::uint64_t pa
 }
 std::uint64_t presentation_fingerprint(const Scene& scene,std::uint64_t texture_payload) {
     Fingerprint h; h.string(scene.name); h.vector(scene.sky_top); h.vector(scene.sky_bottom);
+    h.add(environment_fingerprint(scene));
     h.add(texture_payload);
     h.add(scene.materials.size()); h.add(scene.textures.size()); h.add(scene.lights.size());
     for(const auto& m:scene.materials) {
@@ -366,6 +368,9 @@ const Scene& SceneGeometryRuntime::prepare(const Scene& source,const Camera& cam
         if(pose_only)state.snapshot.nodes=source.nodes;
         // sky/材质/光源更新不复制全部 mesh，也不复制内容未变的大幅纹理。
         state.snapshot.name=source.name; state.snapshot.sky_top=source.sky_top; state.snapshot.sky_bottom=source.sky_bottom;
+        state.snapshot.environment_map=source.environment_map;
+        state.snapshot.environment_intensity=source.environment_intensity;
+        state.snapshot.environment_rotation=source.environment_rotation;
         state.snapshot.materials=source.materials; state.snapshot.lights=source.lights;
         if(state.source_textures!=texture_descriptors) state.snapshot.textures=source.textures;
         state.snapshot.baked_resources=source.baked_resources;

@@ -12,6 +12,7 @@ layout(std140,set=3,binding=0) uniform GpuLightingUniform {
     vec4 skyTop;
     vec4 skyBottom;
     ivec4 metadata; // 原场景 light count，roughness levels，ShadingMode，KC enabled
+    vec4 environment; // intensity, cos(rotation), sin(rotation), has HDR
     GpuRectangle rectangles[64];
 } gpuLighting;
 layout(set=3,binding=1) uniform sampler2D gpuDiffuseIbl;
@@ -19,6 +20,7 @@ layout(set=3,binding=2) uniform sampler2D gpuSpecularIbl;
 layout(set=3,binding=3) uniform sampler2D gpuBrdfLut;
 layout(set=3,binding=4) uniform sampler2D gpuLtcInverse;
 layout(set=3,binding=5) uniform sampler2D gpuLtcAmplitude;
+layout(set=3,binding=6) uniform sampler2D gpuEnvironmentBackground;
 
 vec3 gpu_unit(vec3 v,vec3 fallback) {
     float q=dot(v,v);return q>1e-20 ? v*inversesqrt(q):fallback;
@@ -98,12 +100,22 @@ vec3 gpu_latlong_texel(sampler2D image,ivec2 pixel,int level) {
 }
 vec3 gpu_latlong(sampler2D image,vec3 direction,int level) {
     vec3 d=gpu_unit(direction,vec3(0,1,0));
+    // 逆旋转世界方向到环境坐标；所有环境查表只在这里乘一次线性强度。
+    float c=gpuLighting.environment.y,s=gpuLighting.environment.z;
+    d=vec3(c*d.x-s*d.z,d.y,s*d.x+c*d.z);
     // pole 的 atan(0,0) 未定义，显式指定经度。
     float u=dot(d.xz,d.xz)>1e-20 ? atan(d.z,d.x)/(2*GPU_LIGHTING_PI):0;
     vec2 uv=vec2(fract(u),acos(clamp(d.y,-1,1))/GPU_LIGHTING_PI);
     vec2 p=uv*vec2(textureSize(image,level))-.5;ivec2 a=ivec2(floor(p));vec2 f=fract(p);
     return mix(mix(gpu_latlong_texel(image,a,level),gpu_latlong_texel(image,a+ivec2(1,0),level),f.x),
-               mix(gpu_latlong_texel(image,a+ivec2(0,1),level),gpu_latlong_texel(image,a+1,level),f.x),f.y);
+               mix(gpu_latlong_texel(image,a+ivec2(0,1),level),gpu_latlong_texel(image,a+1,level),f.x),f.y)*gpuLighting.environment.x;
+}
+// 主程序背景阶段必须使用本入口，而不是 common.glsl 中的独立解析天空。
+// 切换 HDR 的后台预过滤尚未完成时，背景与物体都继续引用同一旧环境。
+vec3 gpu_environment_background(vec3 direction) {
+    if(gpuLighting.environment.w>.5)return gpu_latlong(gpuEnvironmentBackground,direction,0);
+    vec3 d=gpu_unit(direction,vec3(0,1,0));
+    return max(mix(gpuLighting.skyBottom.rgb,gpuLighting.skyTop.rgb,clamp(d.y*.5+.5,0,1)),vec3(0))*gpuLighting.environment.x;
 }
 vec3 gpu_prefiltered_specular(vec3 reflection,float roughness) {
     int count=max(gpuLighting.metadata.y,1);float level=clamp(roughness,0,1)*float(count-1);
@@ -330,6 +342,12 @@ void main() {
         vec3 legacy=gpu_area_light(j,vec3(0),n,v,vec3(.7,.2,.08),.7,.3);
         vec3 neutral=gpu_area_light(int(j),vec3(0),n,v,vec3(.7,.2,.08),.7,.3,vec4(0,0,0,1),vec4(0,.15,0,0));
         diagnostic.values[i]=vec4(legacy-neutral,1);
+    } else if(i<192u) {
+        uint j=i-180u;float angle=float(j)*2*GPU_LIGHTING_PI/12;
+        vec3 d=gpu_unit(vec3(cos(angle),-.6+.6*float(j%3u),sin(angle)),vec3(0,1,0));
+        if(j==0u)d=vec3(0,1,0);if(j==1u)d=vec3(0,-1,0);
+        if(j==2u)d=gpu_unit(vec3(1,0,-.00001),vec3(1,0,0));
+        diagnostic.values[i]=vec4(gpu_environment_background(d),1);
     }
 }
 #endif
