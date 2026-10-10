@@ -118,12 +118,12 @@ Microsoft Visual C++ v14 x64 Redistributable 必须不早于用于编译该 EXE 
 
 配置位于 `.github/workflows/windows-workbench.yml`，提供 push/PR 的 Windows Release 构建和 CPU 检查；手动 `workflow_dispatch` 的 `package` 默认为 false，可选生成 artifact。只有手动明确勾选且必需字体/许可已准备好时才打包；不创建 GitHub Release，没有写仓库权限。
 
-构建环境固定 `windows-2022`、VS 2022 generator、x64、v143、Vulkan SDK `1.3.296.0`。下载与校验 URL 均使用完整安装包文件名 `VulkanSDK-1.3.296.0-Installer.exe`，避免旧版本的 `vulkan_sdk.exe` 别名返回 404；核对 [LunarG 官方 SHA API](https://vulkan.lunarg.com/content/view/latest-sdk-version-api) 返回的版本、平台、文件名和 SHA256，无效响应或不匹配立即失败。SDK 仅属于临时 CI 构建环境，不进入演示包。SDK 请求记录及安装日志在安装前开始保存，配置与编译日志也随 CPU 证据上传，失败时仍可定位具体阶段。
+构建环境固定 `windows-2022`、VS 2022 generator、x64、v143、Vulkan SDK `1.4.357.0`，与本机已验证的 Shader 编译器保持一致；保留中文路径、空格与特殊字符的编译回归，不因旧工具无法打开输入文件而跳过测试。下载与校验 URL 均使用完整 x64 安装包文件名 `vulkansdk-windows-X64-1.4.357.0.exe`，不依赖版本间行为不同的别名；核对 [LunarG 官方 SHA API](https://vulkan.lunarg.com/content/view/latest-sdk-version-api) 返回的版本、平台、文件名和 SHA256，无效响应或不匹配立即失败。SDK 仅属于临时 CI 构建环境，不进入演示包，也不改变引擎对运行时 Vulkan 1.3 的要求。SDK 请求记录及安装日志在安装前开始保存，编译器版本、配置与编译日志也随 CPU 证据上传，失败时仍可定位具体阶段。
 
 第三方 Actions 固定到官方已核实提交：
 
-- [actions/checkout v4.2.2](https://github.com/actions/checkout/commit/11bd71901bbe5b1630ceea73d27597364c9af683)。
-- [actions/upload-artifact v4.6.2](https://github.com/actions/upload-artifact/commit/ea165f8d65b6e75b540449e92b4886f43607fa02)。
+- [actions/checkout v7.0.1](https://github.com/actions/checkout/commit/3d3c42e5aac5ba805825da76410c181273ba90b1)，Node 24。
+- [actions/upload-artifact v7.0.2](https://github.com/actions/upload-artifact/commit/cf430e030ddbb5b0abf93d22962f4752f3646cd9)，Node 24。
 
 CI 构建 workbench、lab CPU 检查、资源 Registry 检查及 CPU Profiler 检查。`ctest -R '^lab_'` 只选择已经注册的 CPU 组；shader-assets 组需要构建环境的 glslang 编译器，但不代表 GPU 测试。没有执行 `emberframe_gpu_tests`、GPU lighting 测试、隐藏窗口或画面比较。
 
