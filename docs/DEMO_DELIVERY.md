@@ -118,7 +118,7 @@ Microsoft Visual C++ v14 x64 Redistributable 必须不早于用于编译该 EXE 
 
 配置位于 `.github/workflows/windows-workbench.yml`，提供 push/PR 的 Windows Release 构建和 CPU 检查；手动 `workflow_dispatch` 的 `package` 默认为 false，可选生成 artifact。只有手动明确勾选且必需字体/许可已准备好时才打包；不创建 GitHub Release，没有写仓库权限。
 
-构建环境固定 `windows-2022`、VS 2022 generator、x64、v143、Vulkan SDK `1.3.296.0`。SDK 用固定版本 URL，并校验 [LunarG 官方 SHA API](https://vulkan.lunarg.com/content/view/latest-sdk-version-api) 返回的 SHA256；无效响应或不匹配立即失败。SDK 仅属于临时 CI 构建环境，不进入演示包。
+构建环境固定 `windows-2022`、VS 2022 generator、x64、v143、Vulkan SDK `1.3.296.0`。下载与校验 URL 均使用完整安装包文件名 `VulkanSDK-1.3.296.0-Installer.exe`，避免旧版本的 `vulkan_sdk.exe` 别名返回 404；核对 [LunarG 官方 SHA API](https://vulkan.lunarg.com/content/view/latest-sdk-version-api) 返回的版本、平台、文件名和 SHA256，无效响应或不匹配立即失败。SDK 仅属于临时 CI 构建环境，不进入演示包。SDK 请求记录及安装日志在安装前开始保存，配置与编译日志也随 CPU 证据上传，失败时仍可定位具体阶段。
 
 第三方 Actions 固定到官方已核实提交：
 

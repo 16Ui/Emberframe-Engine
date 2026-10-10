@@ -41,36 +41,41 @@ jobs:
       - name: Install pinned Vulkan SDK for compilation only
         run: |
           $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          New-Item -ItemType Directory -Path output/ci -Force | Out-Null
           $version = $env:VULKAN_SDK_VERSION
           $sdkRoot = Join-Path $env:RUNNER_TEMP "VulkanSDK/$version"
-          $installer = Join-Path $env:RUNNER_TEMP "VulkanSDK-$version-Installer.exe"
-          $shaUrl = "https://sdk.lunarg.com/sdk/sha/$version/windows/vulkan_sdk.exe.json"
-          $info = Invoke-RestMethod -Uri $shaUrl
-          if ($info.version -ne $version -or $info.platform -ne 'windows' -or $info.sha -notmatch '^[a-fA-F0-9]{64}$') {
+          # Older SDK releases require the real filename, not the vulkan_sdk.exe alias.
+          $fileName = "VulkanSDK-$version-Installer.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $fileName
+          $shaUrl = "https://sdk.lunarg.com/sdk/sha/$version/windows/$fileName.json"
+          $downloadUrl = "https://sdk.lunarg.com/sdk/download/$version/windows/$fileName"
+          @("SDK version: $version", "Checksum URL: $shaUrl", "Download URL: $downloadUrl") | Set-Content output/ci/vulkan-sdk-request.txt -Encoding utf8
+          $info = Invoke-RestMethod -Uri $shaUrl -MaximumRetryCount 3 -RetryIntervalSec 5
+          if ($info.version -ne $version -or $info.platform -ne 'windows' -or $info.file -ne $fileName -or $info.sha -notmatch '^[a-fA-F0-9]{64}$') {
             throw 'Invalid official SDK checksum response.'
           }
-          Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/$version/windows/vulkan_sdk.exe" -OutFile $installer
+          $info | ConvertTo-Json | Set-Content output/ci/vulkan-sdk-download.json -Encoding utf8
+          Invoke-WebRequest -Uri $downloadUrl -OutFile $installer -MaximumRetryCount 3 -RetryIntervalSec 5
           if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ine $info.sha) { throw 'Vulkan SDK checksum mismatch.' }
-          $process = Start-Process -FilePath $installer -ArgumentList @('--root', "`"$sdkRoot`"", '--accept-licenses', '--default-answer', '--confirm-command', 'install', 'copy_only=1') -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath $installer -ArgumentList @('--root', "`"$sdkRoot`"", '--accept-licenses', '--default-answer', '--confirm-command', 'install', 'copy_only=1') -Wait -PassThru -WindowStyle Hidden -RedirectStandardOutput output/ci/vulkan-sdk-install.log -RedirectStandardError output/ci/vulkan-sdk-install-error.log
           if ($process.ExitCode -ne 0) { throw "SDK installation failed: $($process.ExitCode)" }
           foreach ($file in @('Include/vulkan/vulkan.h','Lib/vulkan-1.lib','Bin/glslangValidator.exe')) {
             if (-not (Test-Path -LiteralPath (Join-Path $sdkRoot $file))) { throw "SDK missing $file" }
           }
           "VULKAN_SDK=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           (Join-Path $sdkRoot 'Bin') | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          New-Item -ItemType Directory -Path output/ci -Force | Out-Null
-          $info | ConvertTo-Json | Set-Content output/ci/vulkan-sdk-download.json -Encoding utf8
 
       - name: Configure MSVC x64 Release
         run: |
-          cmake --preset windows-vs2022 -T v143 -DFASTGLTF_ENABLE_TESTS=OFF -DFASTGLTF_ENABLE_EXAMPLES=OFF
+          cmake --preset windows-vs2022 -T v143 -DFASTGLTF_ENABLE_TESTS=OFF -DFASTGLTF_ENABLE_EXAMPLES=OFF 2>&1 | Tee-Object output/ci/configure.log
           if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
           cmake --version | Set-Content output/ci/cmake-version.txt -Encoding utf8
           Copy-Item -LiteralPath build/CMakeCache.txt -Destination output/ci/CMakeCache.txt
 
       - name: Build Workbench and CPU check targets
         run: |
-          cmake --build build --config Release --target emberframe_workbench emberframe_lab_tests emberframe_registry_test emberframe_profiler_test --parallel 2
+          cmake --build build --config Release --target emberframe_workbench emberframe_lab_tests emberframe_registry_test emberframe_profiler_test --parallel 2 2>&1 | Tee-Object output/ci/build.log
           if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
           $exe = Get-Item bin/Release/emberframe_workbench.exe
           $record = [ordered]@{
