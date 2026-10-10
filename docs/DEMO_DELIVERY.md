@@ -127,6 +127,8 @@ Microsoft Visual C++ v14 x64 Redistributable 必须不早于用于编译该 EXE 
 
 CI 构建 workbench、lab CPU 检查、资源 Registry 检查及 CPU Profiler 检查。`ctest -R '^lab_'` 只选择已经注册的 CPU 组；shader-assets 组需要构建环境的 glslang 编译器，但不代表 GPU 测试。没有执行 `emberframe_gpu_tests`、GPU lighting 测试、隐藏窗口或画面比较。
 
+Shader 编译使用每个子进程自己的隔离工作目录以及相对源码、Include、SPV 输出参数；Windows 的工作目录由宽字符 API 设置，不修改父进程的目录。这样避免系统代码页不同导致编译器无法打开中文绝对路径，回归目录还包含 Emoji，防止仅在中文系统上偶然通过。日志记录工作目录与实际参数，调用规则参与缓存身份；源码文件/Include 文件名本身仍需满足外部编译器的字符支持范围。
+
 产物分别是 CPU 日志/JUnit/构建记录，以及可选演示 ZIP/哈希/summary。上传保留 14 天。运行时变化、新字体或新资产应先由 main 在真实机器验收；CI artifact 上传成功不能冒充这一步。
 
 这里“可复现构建”指固定步骤、SDK 版本、架构和工具链系列并留下版本证据；托管 `windows-2022` 镜像的补丁版本仍会更新，MSVC/CMake 的实际版本由证据文件记录。不承诺相同 revision 一定产出相同二进制字节。

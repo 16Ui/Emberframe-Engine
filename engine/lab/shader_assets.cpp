@@ -573,6 +573,8 @@ ShaderBuildResult ShaderLibrary::build() {
         }
         const auto snapshot=snapshot_sources(c);const auto sources_hash=snapshot_hash(snapshot);const auto options=compiler_options(c.options);
         Sha256 identity;hash_field(identity,"EmberFrameShaderCache 1");hash_field(identity,sources_hash);hash_field(identity,binary_hash);hash_field(identity,utf8(c.glslang));hash_field(identity,impl_->compiler_version);
+        // 调用规则变化也参与缓存身份，避免沿用旧绝对路径调用产生的候选记录。
+        hash_field(identity,"relative-path-invocation 1");
         for(const auto& option:options)hash_field(identity,option);
         for(const auto& source:c.sources){hash_field(identity,utf8(source.file));hash_field(identity,stage_name(source.stage));hash_field(identity,source.entry_point);}
         key=identity.finish();published=c.cache_dir/"versions"/key;
@@ -591,9 +593,12 @@ ShaderBuildResult ShaderLibrary::build() {
         auto version=std::make_shared<ShaderVersion>();version->id=key;version->source_hash=sources_hash;version->compiler_hash=binary_hash;version->directory=published;
         bool failed=false;
         for(const auto& source:c.sources) {
-            auto args=options;args.push_back("-I"+utf8(frozen));args.push_back("-S");args.push_back(stage_name(source.stage));args.push_back("-e");args.push_back(source.entry_point);
-            args.push_back(utf8(frozen/source.file));args.push_back("-o");const auto output=staging/output_file(source);args.push_back(utf8(output));fs::create_directories(output.parent_path());
-            std::ostringstream invocation;invocation<<"Executable: "<<utf8(c.glslang)<<'\n';for(const auto& arg:args)invocation<<std::quoted(arg)<<'\n';write_file(result.log_directory/(utf8(source.file)+".argv.txt"),invocation.str());
+            // CreateProcessW 能设置 Unicode 工作目录，但 glslang 的窄字符 argv 仍可能受系统
+            // ANSI 代码页影响。让所有文件参数相对 frozen，保留中文/Emoji 根目录而不传入 argv。
+            // 子进程各自拥有工作目录；不能改父进程 current_path，否则并行编译会互相干扰。
+            auto args=options;args.push_back("-I.");args.push_back("-S");args.push_back(stage_name(source.stage));args.push_back("-e");args.push_back(source.entry_point);
+            args.push_back(utf8(source.file));args.push_back("-o");const auto output=staging/output_file(source);args.push_back(utf8(fs::path("..")/output_file(source)));fs::create_directories(output.parent_path());
+            std::ostringstream invocation;invocation<<"Executable: "<<utf8(c.glslang)<<'\n'<<"Working directory: "<<utf8(frozen)<<'\n';for(const auto& arg:args)invocation<<std::quoted(arg)<<'\n';write_file(result.log_directory/(utf8(source.file)+".argv.txt"),invocation.str());
             auto diagnostic=run_compiler(c.glslang,args,frozen,result.log_directory/source.file,c.compiler_timeout,c.max_log_bytes);diagnostic.source=source.file;++result.compiled_files;
             const bool success=diagnostic.exit_code==0&&!diagnostic.timed_out&&!diagnostic.output_limit_exceeded;result.diagnostics.push_back(std::move(diagnostic));
             if(!success){failed=true;continue;}

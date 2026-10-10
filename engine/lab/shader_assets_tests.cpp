@@ -21,7 +21,8 @@ struct ShaderFixture {
         static std::atomic<unsigned> serial{0};
         for(unsigned attempt=0;attempt<100;++attempt){auto candidate=fs::temp_directory_path()/("emberframe-shader-test-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count())+"-"+std::to_string(serial.fetch_add(1)));
             if(fs::create_directory(candidate)){root=std::move(candidate);break;}}
-        ensure(!root.empty(),"Cannot create isolated shader test directory");source=root/fs::path(u8"source 空格 & symbols");cache=root/fs::path(u8"cache 空格 & symbols");fs::create_directories(source);
+        // Emoji 无法由常见 ANSI 代码页表示，让本机也能覆盖 CI 的跨语言路径问题。
+        ensure(!root.empty(),"Cannot create isolated shader test directory");source=root/fs::path(u8"source 空格 🧪 & symbols");cache=root/fs::path(u8"cache 空格 🧪 & symbols");fs::create_directories(source);
     }
     ~ShaderFixture(){if(!root.empty()){std::error_code ignored;fs::remove_all(root,ignored);}}
     ShaderFixture(const ShaderFixture&)=delete;
@@ -132,6 +133,10 @@ TestResults test_shader_assets(const fs::path& supplied_compiler) {
     test("Shader assets: real vertex/fragment/compute compile, descriptors, logs and cache hit",[&]{
         ShaderFixture fixture;ShaderLibrary library(fixture.config(compiler));const auto first=library.build();good_build(first);
         ensure(!first.cache_hit&&first.compiled_files==3&&first.version->shaders.size()==3,"First build did not compile all stages");
+        const auto invocation=test_file(first.log_directory/"quad.vert.argv.txt");
+        ensure(invocation.find("Working directory: ")!=std::string::npos&&invocation.find("\"-I.\"")!=std::string::npos&&
+               invocation.find("\"quad.vert\"")!=std::string::npos&&invocation.find("\"../quad.vert.spv\"")!=std::string::npos,
+               "Compiler file arguments must stay relative to the isolated Unicode working directory");
         ensure(!library.active(),"Candidate build switched active GPU version");library.activate(first.version);
         const auto& fragment=named_shader(*first.version,"shade & look.frag");const auto& r=fragment.reflection;
         ensure(r.complete&&r.entry_points.size()==1&&r.entry_points[0].name=="main"&&r.entry_points[0].stage==ShaderStage::fragment,"Entry-point reflection incorrect");
