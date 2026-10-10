@@ -109,7 +109,7 @@
 .\scripts\package-workbench.ps1 -SkipBuild -AssetManifestPath assets/showcase/ASSETS.json
 ```
 
-依赖、预编译 Shader、字体许可、资源清单与包验收步骤见 [Windows 演示包交付](docs/DEMO_DELIVERY.md)。打包不自动运行测试；生成 ZIP 不等于已完成异机验收或发布 Release。本轮 GitHub 远程 CI 尚未运行。
+依赖、预编译 Shader、字体许可、资源清单与包验收步骤见 [Windows 演示包交付](docs/DEMO_DELIVERY.md)。打包不自动运行测试；生成 ZIP 不等于已完成异机验收或发布 Release。远程编译与 CPU 检查结果见 [GitHub Actions](https://github.com/16Ui/Emberframe-Engine/actions/workflows/windows-workbench.yml)，不代表真实 GPU 或异机验收。
 
 便携运行单独见 [同机迁移记录](docs/evidence/portable-runtime.json)，可用 [便携复验脚本](scripts/verify-portable-workbench.ps1) 重现，参数见交付文档。记录绑定包与 EXE 哈希，列出移除 SDK PATH、显式验证层不可用、中文/空格解压路径、无关工作目录下的场景运行，以及 payload 哈希和包文件列表检查；实际通过范围与数量以记录为准，不并入其他场景计数，也不以未启用验证层的成功运行代替 Validation 检查。
 

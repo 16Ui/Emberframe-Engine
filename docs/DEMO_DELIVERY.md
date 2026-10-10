@@ -137,7 +137,7 @@ CI 构建 workbench、lab CPU 检查、资源 Registry 检查及 CPU Profiler �
 
 [便携运行记录](evidence/portable-runtime.json)验证了：包解压到带中文与空格的独立临时目录，从另一个工作目录启动；移除子进程的 SDK 路径，覆盖显式 Layer 搜索为空目录；三个场景均使用系统 Vulkan loader 和 GPU 驱动成功呈现，Khronos validation layer 不可用；核对全部 payload 哈希且包内文件列表保持不变。
 
-这仍是同一台电脑：没有卸载已安装 SDK、隐藏原源码目录或执行只读 ACL 测试，也未完成异机验收。验证脚本不修改系统环境或注册表，不关闭用户窗口，不删除临时验收目录。Windows 托管 CI 已配置，但尚未在 GitHub 上运行，不把本机通过写成远端 CI 通过。
+这仍是同一台电脑：没有卸载已安装 SDK、隐藏原源码目录或执行只读 ACL 测试，也未完成异机验收。验证脚本不修改系统环境或注册表，不关闭用户窗口，不删除临时验收目录。Windows 托管 CI 的各次实际结果以 [GitHub Actions 记录](https://github.com/16Ui/Emberframe-Engine/actions/workflows/windows-workbench.yml)为准；本机通过不等于远端通过，远端 CPU 检查通过也不等于真实 GPU 或异机验收。
 
 ```powershell
 # 使用新建的证据目录，保留失败结果；完整验证可能耗时数分钟。

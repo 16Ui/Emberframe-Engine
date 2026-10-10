@@ -91,7 +91,15 @@ jobs:
       - name: CPU checks only (no GPU device assumed)
         run: |
           ctest --test-dir build -C Release -R '^lab_' --output-on-failure --no-tests=error --output-junit "$env:GITHUB_WORKSPACE/output/ci/cpu-checks.xml" 2>&1 | Tee-Object output/ci/cpu-checks.log
-          if ($LASTEXITCODE -ne 0) { throw 'CPU lab checks failed.' }
+          if ($LASTEXITCODE -ne 0) {
+            # Surface assertion failures in job annotations, not only a generic exit code.
+            $failures = @(Select-String -LiteralPath output/ci/cpu-checks.log -Pattern '^FAIL ' | Select-Object -ExpandProperty Line)
+            foreach ($failure in $failures) {
+              $message = $failure.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Host "::error::$message"
+            }
+            throw 'CPU lab checks failed; see test annotations and the uploaded JUnit/log.'
+          }
           & ./bin/Release/emberframe_registry_test.exe 2>&1 | Tee-Object output/ci/registry.log
           if ($LASTEXITCODE -ne 0) { throw 'Resource registry checks failed.' }
           & ./bin/Release/emberframe_profiler_test.exe 2>&1 | Tee-Object output/ci/profiler.log
